@@ -93,7 +93,7 @@ def optimize(
         sg_after = apply_multipliers(sg_simple, mult_cfg, MultPick(codes))
         fed = tax_federal(inc, fed_cfg)
         total = sg_after + fed
-        return {"total": total}
+        return {"total": total, "federal": fed}
 
     out = optimize_deduction(Decimal(income), max_deduction, step, calc_fn)
     # prettify Decimals
