@@ -3,7 +3,7 @@ currency: CHF
 rounding:
   per_100_step: true
   step_size: 100
-  step_mode: ceil
+  step_mode: floor
   tax_round_to: 0
   scope: as_official
 segments:

@@ -191,6 +191,12 @@ def optimize_deduction(
         T_spot = _as_total(r_spot)
         saved_spot = T0 - T_spot
         roi_spot = _roi(saved_spot, d_spot)  # Decimal
+        # Components (if available from calc_fn)
+        fed_spot_maybe = _as_federal_maybe(r_spot)
+        fed_base_maybe = _as_federal_maybe(base)
+        sg_spot_maybe = (T_spot - fed_spot_maybe) if (fed_spot_maybe is not None) else None
+        sg_base_maybe = (T0 - fed_base_maybe) if (fed_base_maybe is not None) else None
+        roi_spot = _roi(saved_spot, d_spot)  # Decimal
 
         # local marginal at the sweet spot (Δ100)
         r_spot_lo = calc_fn(y_spot - eps if y_spot >= eps else y_spot)
@@ -274,9 +280,23 @@ def optimize_deduction(
             "notes": notes or None,
             "federal_100_nudge_from_best": nudge_diag,
         }
+        # Saved percent vs baseline
+        saved_pct_spot = float((saved_spot / T0 * 100)) if T0 > 0 else 0.0
+
         sweet_spot = {
             "deduction": d_spot,
             "new_income": float(y_spot),
+            "total_tax_at_spot": float(T_spot),
+            "tax_saved_absolute": float(saved_spot),
+            "tax_saved_percent": saved_pct_spot,
+            # Optional quick breakdowns if calc_fn provided components
+            "federal_tax_at_spot": float(fed_spot_maybe) if fed_spot_maybe is not None else None,
+            "sg_tax_at_spot": float(sg_spot_maybe) if sg_spot_maybe is not None else None,
+            "baseline": {
+                "total_tax": float(T0),
+                "federal_tax": float(fed_base_maybe) if fed_base_maybe is not None else None,
+                "sg_tax": float(sg_base_maybe) if sg_base_maybe is not None else None,
+            },
             "explanation": "End of near-max ROI plateau: last CHF before ROI drops meaningfully.",
             "why": why,
         }

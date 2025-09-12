@@ -1,4 +1,4 @@
-from decimal import Decimal
+from decimal import Decimal, ROUND_DOWN
 from math import ceil, floor
 from typing import Tuple, Optional, Dict, Any
 from .models import FederalConfig, chf
@@ -34,7 +34,11 @@ def tax_federal(income: Decimal, cfg: FederalConfig) -> Decimal:
         tax = base_at + per100 * units
     else:
         tax = base_at
-    return final_round(tax, cfg.rounding.tax_round_to)
+    # Apply official ESTV final rounding for federal:
+    # "annual tax is rounded down to the next 5 rappen"
+    step = Decimal("0.05")
+    tax = (tax / step).to_integral_value(rounding=ROUND_DOWN) * step
+    return tax
 
 
 def federal_marginal_hundreds(income: Decimal, cfg: FederalConfig) -> float:
