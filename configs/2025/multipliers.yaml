@@ -1,0 +1,6 @@
+order: ["Kanton", "Gemeinde", "Feuerwehr", "Church"]  
+items:
+  - { name: "Kanton",    code: "KANTON",    kind: "factor", rate: 1.05, default_selected: true }
+  - { name: "Gemeinde",  code: "GEMEINDE",  kind: "factor", rate: 1.38, default_selected: true }
+  - { name: "Feuerwehr", code: "FEUER",     kind: "factor", rate: 0.14, default_selected: false }
+  - { name: "Church",    code: "CHURCH",    kind: "factor", rate: 0.00, optional: true, default_selected: false }

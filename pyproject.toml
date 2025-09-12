@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=67", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "taxglide"
+version = "0.1.0"
+description = "Config-driven Swiss tax CLI (SG + Federal)"
+authors = [{ name = "Reto Wietlisbach" }]
+requires-python = ">=3.11"
+dependencies = [
+  "typer>=0.12.0",
+  "rich>=13.7.0",
+  "pydantic>=2.7.0",
+  "PyYAML>=6.0.1",
+  "matplotlib>=3.8.0",
+]
+
+[project.scripts]
+taxglide = "taxglide.cli:app"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["taxglide*"]
+
+[tool.pytest.ini_options]
+addopts = "-q"

@@ -1,0 +1,19 @@
+
+currency: CHF
+model: percent_of_bracket_portion
+rounding:
+  taxable_step: 1
+  tax_round_to: 0
+  scope: as_official
+brackets:
+  - { lower: 0,      width: 11600,  rate_percent: 0.0 }
+  - { lower: 11600,  width: 4200,   rate_percent: 4.0 }
+  - { lower: 15800,  width: 18000,  rate_percent: 6.0 }
+  - { lower: 33800,  width: 26400,  rate_percent: 8.0 }
+  - { lower: 60200,  width: 38100,  rate_percent: 9.2 }
+  - { lower: 98300,  width: 165900, rate_percent: 9.4 }
+override:
+  flat_percent_above:
+    threshold: 264200
+    percent: 8.5
+notes: "Art. 50 h) einfache Steuer (SG)."
