@@ -8,7 +8,7 @@ import typer
 from rich import print as rprint
 
 from .io.loader import load_configs
-from .engine.stgallen import simple_tax_sg
+from .engine.stgallen import simple_tax_sg, sg_bracket_info
 from .engine.federal import (
     tax_federal,
     federal_marginal_hundreds,
@@ -109,7 +109,10 @@ def optimize(
 
     # Provide a context function so optimizer can narrate federal bracket before/after
     def context_fn(inc: Decimal):
-        return {"federal_segment": federal_segment_info(inc, fed_cfg)}
+        return {
+            "federal_segment": federal_segment_info(inc, fed_cfg),
+            "sg_bracket": sg_bracket_info(inc, sg_cfg),
+        }
 
     out = optimize_deduction(
         Decimal(income),
@@ -357,11 +360,17 @@ def compare_brackets(
     # Federal bracket info
     fed_before = federal_segment_info(original_income, fed_cfg)
     fed_after = federal_segment_info(adjusted_income, fed_cfg)
+    # SG bracket info
+    sg_before = sg_bracket_info(original_income, sg_cfg)
+    sg_after = sg_bracket_info(adjusted_income, sg_cfg)
     
     rprint({
         "original_income": income,
         "adjusted_income": float(adjusted_income),
         "federal_bracket_before": fed_before,
         "federal_bracket_after": fed_after,
-        "bracket_changed": fed_before != fed_after,
+        "federal_bracket_changed": fed_before != fed_after,
+        "sg_bracket_before": sg_before,
+        "sg_bracket_after": sg_after,
+        "sg_bracket_changed": sg_before != sg_after,
     })

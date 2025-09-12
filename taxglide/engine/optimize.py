@@ -200,12 +200,61 @@ def optimize_deduction(
         # federal bracket awareness (optional context_fn)
         ctx_before = context_fn(income) if context_fn else None
         ctx_after = context_fn(y_spot) if context_fn else None
+        fed_before = ctx_before.get("federal_segment") if ctx_before else None
+        fed_after = ctx_after.get("federal_segment") if ctx_after else None
+        sg_before = ctx_before.get("sg_bracket") if ctx_before else None
+        sg_after = ctx_after.get("sg_bracket") if ctx_after else None
+
+        # --- Bracket change flags ---
+        federal_bracket_changed = (fed_before != fed_after) if (fed_before and fed_after) else None
+        sg_bracket_changed = (sg_before != sg_after) if (sg_before and sg_after) else None
+
+        # --- Extra deduction needed to force a change (if unchanged) ---
+        # Federal rule: segment contains income if lo <= i <= hi; to move to a lower segment, need i < lo.
+        extra_deduction_to_change_federal = None
+        if federal_bracket_changed is False:
+            lo = int(fed_before.get("from", 0))
+            if lo <= 0:
+                # Already at the lowest bracket — cannot change further down
+                extra_deduction_to_change_federal = None
+            else:
+                # Need to go below lo, i.e., target income <= lo-1
+                target_income = Decimal(lo - 1)
+                extra = y_spot - target_income
+                extra_deduction_to_change_federal = int(extra) if extra > 0 else 0
+
+        # SG rule has two shapes:
+        #  - flat_percent_above override active if income > threshold → to exit, need income <= threshold
+        #  - progressive bracket when (i > lower and i <= upper) → to move down, need i <= lower
+        extra_deduction_to_change_sg = None
+        if sg_bracket_changed is False and sg_before:
+            if sg_before.get("model") == "flat_percent_above":
+                thr = int(sg_before.get("threshold", 0))
+                target_income = Decimal(thr)   # need <= thr
+                extra = y_spot - target_income
+                extra_deduction_to_change_sg = int(extra) if extra > 0 else 0
+            else:
+                lower = int(sg_before.get("lower", 0))
+                if lower <= 0:
+                    # Already at the lowest bracket — cannot change further down
+                    extra_deduction_to_change_sg = None
+                else:
+                    # Need i <= lower to fall into previous bracket (note: SG logic uses i > lower for current)
+                    target_income = Decimal(lower)
+                    extra = y_spot - target_income
+                    extra_deduction_to_change_sg = int(extra) if extra > 0 else 0
 
         # Explain with compact, decision-relevant metrics
         roi_best_pct = float(best_rate["savings_rate"] * 100)
         roi_spot_pct = float(roi_spot * 100)
         drop_bp = abs(roi_best_pct - roi_spot_pct) * 100  # basis points
         plateau_width = plateau_range["max_d"] - plateau_range["min_d"]
+
+        notes = []
+        if federal_bracket_changed is False and extra_deduction_to_change_federal is None:
+            notes.append("Federal: already at the lowest bracket.")
+        if sg_bracket_changed is False and extra_deduction_to_change_sg is None:
+            notes.append("SG: already at the lowest bracket or override floor.")
 
         why = {
             "roi_at_spot_percent": roi_spot_pct,
@@ -214,11 +263,17 @@ def optimize_deduction(
             "plateau_width_chf": plateau_width,
             "plateau_bounds_chf": [plateau_range["min_d"], plateau_range["max_d"]],
             "local_marginal_percent_at_spot": local_marginal_percent_at_spot,
-            "federal_bracket_before": ctx_before,
-            "federal_bracket_after": ctx_after,
+            "federal_bracket_before": fed_before,
+            "federal_bracket_after": fed_after,
+            "sg_bracket_before": sg_before,
+            "sg_bracket_after": sg_after,
+            "federal_bracket_changed": federal_bracket_changed,
+            "sg_bracket_changed": sg_bracket_changed,
+            "extra_deduction_to_change_federal_bracket": extra_deduction_to_change_federal,
+            "extra_deduction_to_change_sg_bracket": extra_deduction_to_change_sg,
+            "notes": notes or None,
             "federal_100_nudge_from_best": nudge_diag,
         }
-
         sweet_spot = {
             "deduction": d_spot,
             "new_income": float(y_spot),
@@ -228,13 +283,13 @@ def optimize_deduction(
 
     return {
         "base_total": T0,
-        "best_rate": {
-            **best_rate,
-            "savings_rate_percent": float(best_rate["savings_rate"] * 100),
-        },
-        "plateau_near_max_roi": plateau_range,   # full near-max band
+        #"best_rate": {
+        #    **best_rate,
+        #    "savings_rate_percent": float(best_rate["savings_rate"] * 100),
+        #},
+        #"plateau_near_max_roi": plateau_range,   # full near-max band
         "sweet_spot": sweet_spot,
         "local_marginal_percent_at_best": local_marginal_percent_at_best,
         "local_marginal_percent_at_spot": local_marginal_percent_at_spot,
-        "federal_100_nudge": nudge_diag,
+        #"federal_100_nudge": nudge_diag,
     }
