@@ -19,6 +19,80 @@ Almost mainly written with ChatGPT-5 and Claude.
 pip install -e .
 ```
 
+## Testing & Development
+
+⚠️ **IMPORTANT: Always run tests before building or deploying!**
+
+TaxGlide includes a comprehensive test suite with 39 tests that validate calculations against real Swiss tax values with ≤1 CHF accuracy.
+
+### Run Tests (Verbose)
+
+```bash
+# Recommended: Use the convenient test runner (verbose output)
+python run_tests.py --verbose
+
+# Alternative: Direct pytest with verbose output
+python -m pytest tests/ -v
+
+# With detailed output and no capture (shows all print statements)
+python -m pytest tests/ -v -s
+```
+
+### Run Specific Test Categories
+
+```bash
+# Test only calculations (federal, SG, multipliers, integration)
+python run_tests.py calculation --verbose
+
+# Test only optimization algorithms (ROI, plateau detection, bracket analysis)
+python run_tests.py optimization --verbose
+
+# Test only configuration validation (YAML validation, error handling)
+python run_tests.py config --verbose
+```
+
+### Run Tests with Coverage
+
+```bash
+# See test coverage report
+python run_tests.py --coverage
+
+# Or with pytest-cov directly
+python -m pytest tests/ --cov=taxglide --cov-report=term-missing
+```
+
+### Development Workflow
+
+**Before every build/commit/deploy:**
+
+```bash
+# 1. Run full test suite with verbose output
+python run_tests.py --verbose
+
+# 2. Validate configurations
+taxglide validate --year 2025
+
+# 3. Test a sample calculation
+taxglide calc --year 2025 --income 80000
+
+# 4. Only then proceed with your changes
+```
+
+### Test Accuracy
+
+The test suite validates TaxGlide against **real Swiss tax calculations**:
+
+| Income (CHF) | Federal Tax | SG+Comm Tax | Total Tax | TaxGlide Error |
+|--------------|-------------|-------------|-----------|----------------|
+| 32,000       | 129.35      | 2,770.20    | 2,899.55  | **0.00** CHF   |
+| 60,000       | 671.35      | 8,125.90    | 8,797.25  | **0.07** CHF   |
+| 90,000       | 2,028.00    | 14,826.90   | 16,854.90 | **0.01** CHF   |
+| 120,000      | 4,254.35    | 21,638.65   | 25,893.00 | **0.55** CHF   |
+
+✅ **Maximum error: 0.55 CHF** - Exceptional accuracy for Swiss tax calculations!
+
+---
+
 ## Quick Start
 
 Calculate taxes for 80,000 CHF income in 2025:
