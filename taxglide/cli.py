@@ -237,6 +237,32 @@ def optimize(
         roi_tolerance_bp=tolerance_bp,
     )
 
+    # Enhance output with separate income information if applicable
+    if out.get("sweet_spot") is not None:
+        sweet_spot = out["sweet_spot"]
+        deduction = sweet_spot["deduction"]
+        
+        # Calculate separate new incomes after deduction
+        new_sg_income = sg_income - deduction
+        new_fed_income = fed_income - deduction
+        
+        # Add detailed income information
+        sweet_spot["original_incomes"] = {
+            "sg_income": sg_income,
+            "fed_income": fed_income,
+            "same_income_used": sg_income == fed_income
+        }
+        
+        if sg_income == fed_income:
+            # Legacy single income case - keep simple output
+            sweet_spot["new_income"] = float(new_sg_income)  # Same for both
+        else:
+            # Separate income case - show both new incomes
+            sweet_spot["new_income_sg"] = float(new_sg_income)
+            sweet_spot["new_income_fed"] = float(new_fed_income)
+            # Keep the single value for backward compatibility (use higher income)
+            sweet_spot["new_income"] = float(max(new_sg_income, new_fed_income))
+
     # prettify Decimals for JSON friendliness
     def coerce(d):
         if isinstance(d, dict):
@@ -433,9 +459,9 @@ def scan(
             else:
                 local_marginal_pct = float(0.0)
 
-        rows.append({
+        row_data = {
             "deduction": d,
-            "new_income": float(max(sg_y, fed_y)),
+            "new_income": float(max(sg_y, fed_y)),  # Keep for backward compatibility
             "total_tax": float(total),
             "saved": float(saved),
             "roi_percent": roi_pct,
@@ -446,7 +472,14 @@ def scan(
             "federal_to": fseg["to"] if fseg["to"] is not None else None,
             "federal_per100": fseg["per100"],
             "local_marginal_percent": local_marginal_pct,
-        })
+        }
+        
+        # Add separate income details if different incomes were used
+        if sg_income != fed_income:
+            row_data["new_income_sg"] = float(sg_y)
+            row_data["new_income_fed"] = float(fed_y)
+            
+        rows.append(row_data)
 
     if json_out:
         print(json.dumps(rows, indent=2))
@@ -455,11 +488,20 @@ def scan(
     # write CSV
     out_path = Path(out)
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    fieldnames = list(rows[0].keys()) if rows else [
-        "deduction","new_income","total_tax","saved","roi_percent",
-        "sg_simple","sg_after_multipliers","federal",
-        "federal_from","federal_to","federal_per100","local_marginal_percent"
-    ]
+    
+    # Build fieldnames dynamically to include separate income fields when applicable
+    if rows:
+        fieldnames = list(rows[0].keys())
+    else:
+        fieldnames = [
+            "deduction","new_income","total_tax","saved","roi_percent",
+            "sg_simple","sg_after_multipliers","federal",
+            "federal_from","federal_to","federal_per100","local_marginal_percent"
+        ]
+        # Add separate income fields if different incomes were used
+        if sg_income != fed_income:
+            fieldnames.insert(2, "new_income_sg")  # Insert after new_income
+            fieldnames.insert(3, "new_income_fed")
     with out_path.open("w", newline="", encoding="utf-8") as f:
         w = csv.DictWriter(f, fieldnames=fieldnames)
         w.writeheader()

@@ -7,11 +7,14 @@ Almost mainly written with ChatGPT-5 and Claude.
 ## Features
 
 - **Accurate Swiss Tax Models**: Federal (marginal brackets) + St. Gallen (progressive + multipliers)
+- **Separate Income Support**: Different taxable incomes for SG and Federal taxes 🆕
 - **Smart Deduction Optimization**: Find optimal deduction amounts using ROI analysis with plateau detection
+- **Enhanced Output**: Detailed income breakdowns when using separate SG/Federal incomes 🆕
 - **Flexible Multiplier System**: Handle cantonal, communal, fire service, and church taxes
 - **Rich CLI Interface**: Multiple commands for calculation, optimization, scanning, and visualization
 - **Configuration-Driven**: Easy to update tax rules via YAML files
 - **Export Capabilities**: JSON output and CSV scanning for analysis
+- **Backward Compatible**: All existing workflows continue to work unchanged
 
 ## Installation
 
@@ -100,9 +103,19 @@ Calculate taxes for 80,000 CHF income in 2025:
 taxglide calc --year 2025 --income 80000
 ```
 
+Calculate with different SG and Federal incomes:
+```bash
+taxglide calc --year 2025 --income-sg 78000 --income-fed 80000
+```
+
 Find optimal deduction up to 10,000 CHF:
 ```bash
 taxglide optimize --year 2025 --income 80000 --max-deduction 10000
+```
+
+Optimize with separate incomes:
+```bash
+taxglide optimize --year 2025 --income-sg 78000 --income-fed 80000 --max-deduction 10000
 ```
 
 ## Configuration Structure
@@ -119,13 +132,20 @@ configs/
 
 ### `calc` - Basic Tax Calculation
 
-Calculate total taxes with breakdown by component.
+Calculate total taxes with breakdown by component. Supports both single income and separate SG/Federal incomes.
 
 ```bash
+# Single income (same for both SG and Federal)
 taxglide calc --year 2025 --income 75000 [OPTIONS]
+
+# Separate incomes (different SG and Federal taxable incomes)
+taxglide calc --year 2025 --income-sg 73000 --income-fed 75000 [OPTIONS]
 ```
 
 **Options:**
+- `--income AMOUNT`: Single taxable income for both SG and Federal (CHF)
+- `--income-sg AMOUNT`: St. Gallen taxable income (CHF)
+- `--income-fed AMOUNT`: Federal taxable income (CHF)
 - `--pick CODE`: Include specific multiplier (e.g., `--pick FEUER` for fire service tax)
 - `--skip CODE`: Exclude multiplier (e.g., `--skip CHURCH` to skip church tax)
 - `--json`: Output as JSON instead of formatted display
@@ -135,19 +155,24 @@ taxglide calc --year 2025 --income 75000 [OPTIONS]
 # Basic calculation with defaults (cantonal + communal)
 taxglide calc --year 2025 --income 75000
 
+# Separate SG and Federal incomes (e.g., different deductions)
+taxglide calc --year 2025 --income-sg 73000 --income-fed 75000
+
 # Include fire service tax
 taxglide calc --year 2025 --income 75000 --pick FEUER
 
-# Exclude church tax and get JSON output
-taxglide calc --year 2025 --income 75000 --skip CHURCH --json
+# Separate incomes with custom multipliers and JSON output
+taxglide calc --year 2025 --income-sg 68000 --income-fed 70000 --pick FEUER --json
 
 # Custom multiplier combination
 taxglide calc --year 2025 --income 120000 --pick FEUER --pick CHURCH
 ```
 
-**Sample Output:**
+**Sample Output (Single Income):**
 ```json
 {
+  "income_sg": 75000,
+  "income_fed": 75000,
   "income": 75000,
   "federal": 1149.55,
   "sg_simple": 4890.0,
@@ -160,32 +185,62 @@ taxglide calc --year 2025 --income 120000 --pick FEUER --pick CHURCH
 }
 ```
 
+**Sample Output (Separate Incomes):**
+```json
+{
+  "income_sg": 73000,
+  "income_fed": 75000,
+  "income": null,
+  "federal": 1149.55,
+  "sg_simple": 4567.8,
+  "sg_after_mult": 11099.7,
+  "total": 12249.25,
+  "avg_rate": 16.33,
+  "marginal_total": 27.84,
+  "marginal_federal_hundreds": 5.94,
+  "picks": ["GEMEINDE", "KANTON"]
+}
+```
+
 ---
 
 ### `optimize` - Smart Deduction Optimization
 
-Find the optimal deduction amount to maximize return on investment (ROI).
+Find the optimal deduction amount to maximize return on investment (ROI). Supports both single income and separate SG/Federal incomes.
 
 ```bash
+# Single income (deduction applies to both SG and Federal)
 taxglide optimize --year 2025 --income 85000 --max-deduction 15000 [OPTIONS]
+
+# Separate incomes (deduction applies equally to both)
+taxglide optimize --year 2025 --income-sg 83000 --income-fed 85000 --max-deduction 15000 [OPTIONS]
 ```
 
 **Options:**
+- `--income AMOUNT`: Single taxable income for both SG and Federal (CHF)
+- `--income-sg AMOUNT`: St. Gallen taxable income (CHF)
+- `--income-fed AMOUNT`: Federal taxable income (CHF)
+- `--max-deduction AMOUNT`: Maximum deduction to explore (CHF)
 - `--step SIZE`: Deduction increment in CHF (default: 100)
 - `--tolerance-bp BP`: ROI tolerance in basis points for plateau detection (default: 10.0)
 - `--pick/--skip CODE`: Same as calc command
 - `--json`: JSON output
 
+**Note**: Optimization assumes the deduction applies equally to both SG and Federal incomes.
+
 **Examples:**
 ```bash
-# Find optimal deduction up to 12,000 CHF
+# Find optimal deduction up to 12,000 CHF (single income)
 taxglide optimize --year 2025 --income 85000 --max-deduction 12000
+
+# Separate incomes scenario (e.g., different deductions already applied)
+taxglide optimize --year 2025 --income-sg 83000 --income-fed 85000 --max-deduction 10000
 
 # Fine-grained search with 50 CHF steps
 taxglide optimize --year 2025 --income 95000 --max-deduction 8000 --step 50
 
 # Higher tolerance for broader plateau (50 basis points = 0.5%)
-taxglide optimize --year 2025 --income 100000 --max-deduction 15000 --tolerance-bp 50
+taxglide optimize --year 2025 --income-sg 98000 --income-fed 100000 --max-deduction 15000 --tolerance-bp 50
 ```
 
 **Key Concepts:**
@@ -193,22 +248,43 @@ taxglide optimize --year 2025 --income 100000 --max-deduction 15000 --tolerance-
 - **Plateau**: Range of deductions with near-optimal ROI (within tolerance)
 - **Sweet Spot**: Recommended deduction at end of plateau (conservative optimum)
 
-**Sample Output:**
+**Sample Output (Single Income):**
 ```json
 {
   "base_total": 18450.0,
-  "best_rate": {
-    "deduction": 3400,
-    "savings_rate_percent": 28.43
-  },
-  "plateau_near_max_roi": {
-    "min_d": 3300,
-    "max_d": 3600,
-    "tolerance_bp": 10.0
-  },
   "sweet_spot": {
     "deduction": 3600,
     "new_income": 81400.0,
+    "total_tax_at_spot": 15234.5,
+    "tax_saved_absolute": 3215.5,
+    "tax_saved_percent": 17.4,
+    "original_incomes": {
+      "sg_income": 85000,
+      "fed_income": 85000,
+      "same_income_used": true
+    },
+    "explanation": "End of near-max ROI plateau: last CHF before ROI drops meaningfully."
+  }
+}
+```
+
+**Sample Output (Separate Incomes):**
+```json
+{
+  "base_total": 17892.3,
+  "sweet_spot": {
+    "deduction": 3400,
+    "new_income": 81600.0,
+    "new_income_sg": 79600.0,
+    "new_income_fed": 81600.0,
+    "total_tax_at_spot": 14558.7,
+    "tax_saved_absolute": 3333.6,
+    "tax_saved_percent": 18.6,
+    "original_incomes": {
+      "sg_income": 83000,
+      "fed_income": 85000,
+      "same_income_used": false
+    },
     "explanation": "End of near-max ROI plateau: last CHF before ROI drops meaningfully."
   }
 }
@@ -218,13 +294,21 @@ taxglide optimize --year 2025 --income 100000 --max-deduction 15000 --tolerance-
 
 ### `scan` - Detailed Deduction Analysis
 
-Generate comprehensive data table for all deduction amounts in a range.
+Generate comprehensive data table for all deduction amounts in a range. Supports both single income and separate SG/Federal incomes.
 
 ```bash
+# Single income
 taxglide scan --year 2025 --income 90000 --max-deduction 10000 [OPTIONS]
+
+# Separate incomes
+taxglide scan --year 2025 --income-sg 88000 --income-fed 90000 --max-deduction 10000 [OPTIONS]
 ```
 
 **Options:**
+- `--income AMOUNT`: Single taxable income for both SG and Federal (CHF)
+- `--income-sg AMOUNT`: St. Gallen taxable income (CHF)
+- `--income-fed AMOUNT`: Federal taxable income (CHF)
+- `--max-deduction AMOUNT`: Maximum deduction to explore (CHF)
 - `--d-step SIZE`: Deduction increment (default: 100)
 - `--out PATH`: Output CSV file (default: "scan.csv")
 - `--json`: Print JSON instead of writing CSV
@@ -232,19 +316,24 @@ taxglide scan --year 2025 --income 90000 --max-deduction 10000 [OPTIONS]
 
 **Examples:**
 ```bash
-# Scan every 100 CHF up to 8,000 CHF deduction
+# Scan every 100 CHF up to 8,000 CHF deduction (single income)
 taxglide scan --year 2025 --income 85000 --max-deduction 8000
+
+# Separate incomes scan with custom output file
+taxglide scan --year 2025 --income-sg 83000 --income-fed 85000 --max-deduction 8000 --out separate_income_scan.csv
 
 # Fine scan every 25 CHF, save to custom file
 taxglide scan --year 2025 --income 75000 --max-deduction 5000 --d-step 25 --out detailed_scan.csv
 
 # JSON output for further analysis
-taxglide scan --year 2025 --income 95000 --max-deduction 12000 --json
+taxglide scan --year 2025 --income-sg 93000 --income-fed 95000 --max-deduction 12000 --json
 ```
 
 **CSV Columns:**
 - `deduction`: Amount deducted
-- `new_income`: Income after deduction  
+- `new_income`: Income after deduction (max of SG/Federal for compatibility)
+- `new_income_sg`: SG income after deduction (when using separate incomes)
+- `new_income_fed`: Federal income after deduction (when using separate incomes)
 - `total_tax`: Combined tax liability
 - `saved`: Tax saved vs. no deduction
 - `roi_percent`: Return on investment percentage
@@ -318,38 +407,100 @@ taxglide validate --year 2026
 
 ### `compare-brackets` - Bracket Analysis
 
-Show which tax brackets apply before and after a deduction.
+Show which tax brackets apply before and after a deduction. Supports both single income and separate SG/Federal incomes.
 
 ```bash
+# Single income
 taxglide compare-brackets --year 2025 --income 82000 [OPTIONS]
+
+# Separate incomes
+taxglide compare-brackets --year 2025 --income-sg 80000 --income-fed 82000 [OPTIONS]
 ```
 
 **Options:**
-- `--deduction-amount AMOUNT`: Amount to deduct (default: 0)
+- `--income AMOUNT`: Single taxable income for both SG and Federal (CHF)
+- `--income-sg AMOUNT`: St. Gallen taxable income (CHF)
+- `--income-fed AMOUNT`: Federal taxable income (CHF)
+- `--deduction AMOUNT`: Amount to deduct (default: 0)
 
 **Examples:**
 ```bash
 # Check current brackets for 82k income
 taxglide compare-brackets --year 2025 --income 82000
 
+# Separate incomes bracket analysis
+taxglide compare-brackets --year 2025 --income-sg 80000 --income-fed 82000
+
 # See bracket change with 3,500 CHF deduction  
-taxglide compare-brackets --year 2025 --income 82000 --deduction-amount 3500
+taxglide compare-brackets --year 2025 --income-sg 80000 --income-fed 82000 --deduction 3500
 ```
 
-**Sample Output:**
+**Sample Output (Separate Incomes):**
 ```json
 {
-  "original_income": 82000,
-  "adjusted_income": 78500.0,
+  "original_sg_income": 80000,
+  "original_fed_income": 82000,
+  "adjusted_sg_income": 76500.0,
+  "adjusted_fed_income": 78500.0,
+  "deduction_amount": 3500,
   "federal_bracket_before": {
     "from": 82000, "to": 108800, "per100": 6.60
   },
   "federal_bracket_after": {
     "from": 76100, "to": 82000, "per100": 5.94  
   },
-  "bracket_changed": true
+  "federal_bracket_changed": true,
+  "sg_bracket_before": {
+    "lower": 60200, "width": 38100, "rate_percent": 9.2
+  },
+  "sg_bracket_after": {
+    "lower": 60200, "width": 38100, "rate_percent": 9.2
+  },
+  "sg_bracket_changed": false
 }
 ```
+
+## Separate Income Functionality 🆕
+
+TaxGlide now supports different taxable incomes for SG and Federal taxes, which is common when:
+- Different deductions apply to cantonal vs. federal taxes
+- Income sources are treated differently by each tax system
+- You want to model "what-if" scenarios with varying income splits
+
+### When to Use Separate Incomes
+```bash
+# Traditional: Same income for both systems
+taxglide calc --year 2025 --income 80000
+
+# Modern: Different taxable incomes
+taxglide calc --year 2025 --income-sg 78000 --income-fed 80000
+```
+
+**Key Benefits:**
+- **Accurate modeling**: Reflects real-world tax situations where deductions differ
+- **Enhanced output**: Shows separate new incomes after optimization
+- **Better planning**: Optimize deductions when they apply differently to each system
+- **Backward compatible**: Existing workflows continue unchanged
+
+### Enhanced Output Example
+When using separate incomes, optimization shows both resulting incomes:
+```json
+{
+  "sweet_spot": {
+    "deduction": 3000,
+    "new_income_sg": 75000.0,    # SG income after deduction
+    "new_income_fed": 77000.0,   # Federal income after deduction
+    "new_income": 77000.0,       # Max (for compatibility)
+    "original_incomes": {
+      "sg_income": 78000,
+      "fed_income": 80000,
+      "same_income_used": false
+    }
+  }
+}
+```
+
+---
 
 ## Swiss Tax System Explained
 
