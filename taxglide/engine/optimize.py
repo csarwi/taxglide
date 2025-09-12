@@ -51,10 +51,11 @@ def optimize_deduction(
     # context_fn can provide extra info for explanation, e.g. federal bracket
     context_fn: Optional[Callable[[Number], Dict[str, Any]]] = None,
     fine_window: int = 300,
-    fine_step: int = 1,
-    min_deduction: int = 1,               # ignore tiny d below this
+    fine_step: int = 100,                 # increased to avoid rounding artifacts
+    min_deduction: int = 100,             # increased to avoid meaningless tiny deductions and rounding artifacts
     roi_tolerance_bp: float = 10.0,       # 10 bp = 0.10% band for near-max plateau
     prefer_smallest_on_tie: bool = True,  # keep old behavior by default
+    max_realistic_roi: float = 100.0,     # filter out ROI spikes above this % (unrealistic)
 ) -> Dict[str, Any]:
     """
     Maximize ROI(d) = (T0 - T(Y0-d)) / d for d in [min_deduction..max_deduction].
@@ -93,19 +94,22 @@ def optimize_deduction(
         saved = T0 - T
         roi = _roi(saved, d)
 
-        pack = {"deduction": d, "new_income": y, "total": T, "saved": saved, "savings_rate": roi}
+        # Filter out unrealistic ROI spikes caused by tax rounding artifacts
+        roi_percent = float(roi * 100)
+        if roi_percent <= max_realistic_roi:
+            pack = {"deduction": d, "new_income": y, "total": T, "saved": saved, "savings_rate": roi}
 
-        def _is_better(lhs, rhs):
-            if rhs is None:
-                return True
-            if roi > rhs["savings_rate"]:
-                return True
-            if _within_tol(roi, rhs["savings_rate"], Decimal("1e-12")):
-                return d < rhs["deduction"] if prefer_smallest_on_tie else d > rhs["deduction"]
-            return False
+            def _is_better(lhs, rhs):
+                if rhs is None:
+                    return True
+                if roi > rhs["savings_rate"]:
+                    return True
+                if _within_tol(roi, rhs["savings_rate"], Decimal("1e-12")):
+                    return d < rhs["deduction"] if prefer_smallest_on_tie else d > rhs["deduction"]
+                return False
 
-        if _is_better(pack, best_rate):
-            best_rate = pack
+            if _is_better(pack, best_rate):
+                best_rate = pack
 
         d += step
 
@@ -123,6 +127,12 @@ def optimize_deduction(
         T = _as_total(r)
         saved = T0 - T
         roi = _roi(saved, d)
+        
+        # Skip unrealistic ROI values in fine scan too
+        roi_percent = float(roi * 100)
+        if roi_percent > max_realistic_roi:
+            continue
+            
         if (roi > best_rate["savings_rate"]) or (
             _within_tol(roi, best_rate["savings_rate"], Decimal("1e-12")) and
             ((d < best_rate["deduction"]) if prefer_smallest_on_tie else (d > best_rate["deduction"]))
@@ -134,12 +144,18 @@ def optimize_deduction(
     roi_star = best_rate["savings_rate"]
 
     plateau: List[Tuple[int, float]] = []
-    for d in range(max(min_deduction, 1), max_deduction + 1, fine_step):
+    for d in range(max(min_deduction, fine_step), max_deduction + 1, fine_step):
         y = income - Decimal(d)  # d <= income by validation
         r = calc_fn(y)
         T = _as_total(r)
         saved = T0 - T
         roi = _roi(saved, d)
+        
+        # Skip unrealistic ROI values in plateau detection
+        roi_percent = float(roi * 100)
+        if roi_percent > max_realistic_roi:
+            continue
+            
         # symmetric tolerance: keep points within ±tol of best ROI
         if abs(roi_star - roi) <= tol:
             plateau.append((d, float(roi * 100)))
