@@ -253,6 +253,31 @@ def optimize(
             "same_income_used": sg_income == fed_income
         }
         
+        # Add multiplier information
+        sweet_spot["picks"] = sorted(codes)
+        
+        # Calculate multiplier breakdown at sweet spot if useful
+        current_sg = max(sg_income_decimal - Decimal(deduction), Decimal(0))
+        sg_simple_at_spot = simple_tax_sg(current_sg, sg_cfg)
+        
+        multiplier_breakdown = {}
+        total_multiplier = Decimal(0)
+        for item in mult_cfg.items:
+            if item.code in codes:
+                rate_decimal = Decimal(str(item.rate))
+                multiplier_breakdown[item.code] = {
+                    "name": item.name,
+                    "rate": float(item.rate),
+                    "tax_amount": float(sg_simple_at_spot * rate_decimal)
+                }
+                total_multiplier += rate_decimal
+        
+        sweet_spot["multiplier_details"] = {
+            "sg_simple_tax": float(sg_simple_at_spot),
+            "total_multiplier": float(total_multiplier),
+            "breakdown": multiplier_breakdown
+        }
+        
         if sg_income == fed_income:
             # Legacy single income case - keep simple output
             sweet_spot["new_income"] = float(new_sg_income)  # Same for both
@@ -271,6 +296,9 @@ def optimize(
             return [coerce(x) for x in d]
         return d
 
+    # Add multiplier information to the base output
+    out["multiplier_picks"] = sorted(codes)
+    
     out = {k: coerce(v) for k, v in out.items()}
 
     if json_out:
