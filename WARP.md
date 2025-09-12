@@ -196,6 +196,39 @@ TaxGlide includes a comprehensive test suite with 39 tests covering:
 ### Running Tests
 Use the convenient test runner: `python run_tests.py --verbose`
 
+## Critical Development Workflow
+
+### ⚠️ MANDATORY: Always Run Tests Before Git Operations
+
+**NEVER run `git add` and `git push` without running the test suite first!**
+
+```bash
+# REQUIRED workflow for any code changes:
+
+# 1. Make your changes
+# 2. Run the full test suite
+python -m pytest tests/ -v
+# OR
+python run_tests.py --verbose
+
+# 3. Only if ALL tests pass, then:
+git add .
+git commit -m "Your commit message"
+git push
+```
+
+**Why this is critical:**
+- TaxGlide handles financial calculations where precision matters
+- 64 comprehensive tests validate against real Swiss tax scenarios
+- Regressions could result in incorrect tax calculations
+- Tests catch integration issues between modules
+- Ensures configuration changes don't break existing functionality
+
+**If any test fails:**
+1. Fix the issue before committing
+2. Re-run tests to confirm the fix
+3. Never commit broken code
+
 ## Important Notes
 
 - Comprehensive test suite with 39 tests including real Swiss tax value validation (≤1 CHF accuracy)
