@@ -328,3 +328,118 @@ class TestOptimizationEdgeCases:
         assert result["sweet_spot"] is not None
         # Should find some optimization even in high-income territory
         assert result["sweet_spot"]["deduction"] > 0
+    
+    def test_realistic_optimization_benchmark(self, configs_2025):
+        """Test optimization against known realistic values to prevent regressions.
+        
+        This test validates that our optimization produces sensible, realistic results
+        and helps prevent future regressions like the federal rounding artifacts.
+        
+        Based on actual TaxGlide output for separate incomes: 
+        SG 97400 CHF, Federal 99400 CHF with max deduction 50000.
+        Values should be within 95% accuracy tolerance.
+        """
+        sg_cfg, fed_cfg, mult_cfg = configs_2025
+        
+        # Separate income calculation function (SG vs Federal)
+        sg_income = chf(97400)
+        fed_income = chf(99400)
+        
+        def calc_fn_separate(deduction: Decimal):
+            # Apply deduction to both incomes
+            sg_income_after = sg_income - deduction
+            fed_income_after = fed_income - deduction
+            
+            # Calculate taxes separately
+            sg_simple = simple_tax_sg(sg_income_after, sg_cfg)
+            sg_after = apply_multipliers(sg_simple, mult_cfg, MultPick(["KANTON", "GEMEINDE"]))
+            fed = tax_federal(fed_income_after, fed_cfg)
+            total = sg_after + fed
+            return {"total": total, "federal": fed}
+        
+        # Context function to provide bracket information
+        def context_fn_separate(remaining_income: Decimal):
+            from taxglide.engine.federal import federal_segment_info
+            from taxglide.engine.stgallen import sg_bracket_info
+            
+            deduction = baseline_income - remaining_income
+            sg_income_after = sg_income - deduction
+            fed_income_after = fed_income - deduction
+            
+            return {
+                "federal_segment": federal_segment_info(fed_income_after, fed_cfg),
+                "sg_bracket": sg_bracket_info(sg_income_after, sg_cfg)
+            }
+        
+        # Test case: Separate incomes with large deduction space
+        # Use higher income as baseline for optimization validation
+        baseline_income = max(sg_income, fed_income)
+        result = optimize_deduction(
+            income=baseline_income,
+            max_deduction=50000,
+            step=100,
+            calc_fn=lambda income: calc_fn_separate(baseline_income - income),
+            context_fn=context_fn_separate
+        )
+        
+        # Expected realistic values (95% tolerance)
+        expected = {
+            "base_total": 19129.63,           # Base tax before optimization
+            "deduction": 20500,               # Optimal deduction amount
+            "new_income": 78900.0,            # Income after deduction
+            "total_tax_at_spot": 13214.102,   # Tax at optimized income
+            "tax_saved_absolute": 5915.53,    # Absolute tax savings
+            "tax_saved_percent": 30.92,       # Percent savings
+            "roi_at_spot_percent": 28.86,     # ROI percentage (realistic!)
+            "local_marginal_percent_at_spot": 28.31,  # Marginal rate at optimized point
+            "federal_bracket_changed": True,   # Should cross federal bracket
+        }
+        
+        # Validation with 95% accuracy tolerance
+        tolerance = 0.05  # 5% tolerance
+        
+        assert result["sweet_spot"] is not None, "Optimization should find a sweet spot"
+        sweet_spot = result["sweet_spot"]
+        
+        # Base total validation (within 5%)
+        base_total = float(result["base_total"])
+        assert abs(base_total - expected["base_total"]) / expected["base_total"] <= tolerance, \
+            f"Base total {base_total} not within 95% of expected {expected['base_total']}"
+        
+        # Deduction amount validation (within 5%)
+        deduction = sweet_spot["deduction"]
+        assert abs(deduction - expected["deduction"]) / expected["deduction"] <= tolerance, \
+            f"Deduction {deduction} not within 95% of expected {expected['deduction']}"
+        
+        # Tax savings validation (within 5%)
+        tax_saved = sweet_spot["tax_saved_absolute"]
+        assert abs(tax_saved - expected["tax_saved_absolute"]) / expected["tax_saved_absolute"] <= tolerance, \
+            f"Tax saved {tax_saved} not within 95% of expected {expected['tax_saved_absolute']}"
+        
+        # ROI validation - this is critical for detecting rounding artifacts
+        why = sweet_spot.get("why", {})
+        roi = why.get("roi_at_spot_percent", 0)
+        assert abs(roi - expected["roi_at_spot_percent"]) / expected["roi_at_spot_percent"] <= tolerance, \
+            f"ROI {roi}% not within 95% of expected {expected['roi_at_spot_percent']}%"
+        
+        # ROI sanity checks to prevent future regressions
+        assert roi > 10, f"ROI {roi}% seems too low - possible optimization bug"
+        assert roi < 100, f"ROI {roi}% seems unrealistically high - possible rounding artifact"
+        
+        # Federal bracket change validation
+        federal_bracket_changed = why.get("federal_bracket_changed", False)
+        assert federal_bracket_changed == expected["federal_bracket_changed"], \
+            f"Expected federal bracket change: {expected['federal_bracket_changed']}, got: {federal_bracket_changed}"
+        
+        # Marginal rate validation
+        marginal_rate = why.get("local_marginal_percent_at_spot", 0)
+        assert abs(marginal_rate - expected["local_marginal_percent_at_spot"]) / expected["local_marginal_percent_at_spot"] <= tolerance, \
+            f"Marginal rate {marginal_rate}% not within 95% of expected {expected['local_marginal_percent_at_spot']}%"
+        
+        # Success message
+        print(f"\n✅ Realistic Optimization Benchmark PASSED")
+        print(f"   SG Income: 97,400 CHF, Federal Income: 99,400 CHF")
+        print(f"   Optimal deduction: {deduction:,} CHF")
+        print(f"   Tax savings: {tax_saved:,.2f} CHF ({sweet_spot['tax_saved_percent']:.1f}%)")
+        print(f"   ROI: {roi:.1f}% (realistic and sustainable)")
+        print(f"   Federal bracket optimization: {'✓' if federal_bracket_changed else '✗'}")
