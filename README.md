@@ -94,6 +94,21 @@ The test suite validates TaxGlide against **real Swiss tax calculations**:
 
 ✅ **Maximum error: 0.55 CHF** - Exceptional accuracy for Swiss tax calculations!
 
+### Official Verification Sources
+
+Here you can calculate as well, if you don't trust the program :D
+
+**🏛️ Official Tax Calculator (St. Gallen)**  
+[https://www.sg.ch/steuern-finanzen/steuern/steuerkalkulator/privatperson.sendCQForm.html](https://www.sg.ch/steuern-finanzen/steuern/steuerkalkulator/privatperson.sendCQForm.html)
+
+**📋 Federal Tax Law (Article 36 - Tax Brackets)**  
+[https://www.fedlex.admin.ch/eli/cc/1991/1184_1184_1184/de](https://www.fedlex.admin.ch/eli/cc/1991/1184_1184_1184/de)
+
+**📋 St. Gallen Cantonal Tax Law (Article 50 - Tax Brackets)**  
+[https://www.gesetzessammlung.sg.ch/app/de/texts_of_law/811.1](https://www.gesetzessammlung.sg.ch/app/de/texts_of_law/811.1)
+
+These official sources provide the legal foundation for TaxGlide's calculations and allow independent verification of results.
+
 ---
 
 ## Quick Start
