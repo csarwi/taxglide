@@ -46,6 +46,23 @@ class TaxTestCase:
     def __repr__(self):
         return f"TaxTestCase(income={self.income}, total={self.total_tax})"
 
+
+class SeparateIncomeTaxTestCase:
+    """Test case data structure for separate SG and Federal income calculations."""
+    def __init__(self, sg_income: int, fed_income: int, federal_tax: float, 
+                 sg_simple: float, sg_after_mult: float, total_tax: float, 
+                 description: str = ""):
+        self.sg_income = sg_income
+        self.fed_income = fed_income
+        self.federal_tax = chf(federal_tax)
+        self.sg_simple = chf(sg_simple)
+        self.sg_after_mult = chf(sg_after_mult)
+        self.total_tax = chf(total_tax)
+        self.description = description
+        
+    def __repr__(self):
+        return f"SeparateIncomeTaxTestCase(sg={self.sg_income}, fed={self.fed_income}, total={self.total_tax})"
+
 @pytest.fixture
 def sample_tax_cases():
     """Real Swiss tax test cases from official calculations."""
@@ -81,5 +98,43 @@ def sample_tax_cases():
             sg_after_mult=21638.65,
             total_tax=25893.00,
             description="High income - higher marginal rates"
+        )
+    ]
+
+
+@pytest.fixture
+def separate_income_test_cases():
+    """Real Swiss tax cases with different SG and Federal taxable incomes.
+    
+    These cases demonstrate scenarios where cantonal and federal deductions differ,
+    resulting in different taxable income bases for SG vs Federal calculations.
+    """
+    return [
+        SeparateIncomeTaxTestCase(
+            sg_income=130000,
+            fed_income=110000,
+            federal_tax=3374.40,
+            sg_simple=9843.86,  # 23922.85 / 2.43
+            sg_after_mult=23922.85,
+            total_tax=27297.25,  # 23922.85 + 3374.40
+            description="High income - significant federal deduction advantage (20k difference)"
+        ),
+        SeparateIncomeTaxTestCase(
+            sg_income=94700,
+            fed_income=91700,
+            federal_tax=2140.15,
+            sg_simple=6535.06,  # 15877.60 / 2.43
+            sg_after_mult=15877.60,
+            total_tax=18017.75,  # 15877.60 + 2140.15
+            description="Mid-high income - moderate federal deduction advantage (3k difference)"
+        ),
+        SeparateIncomeTaxTestCase(
+            sg_income=35000,
+            fed_income=32000,
+            federal_tax=129.35,
+            sg_simple=1343.99,  # 3265.90 / 2.43
+            sg_after_mult=3265.90,
+            total_tax=3395.25,  # 3265.90 + 129.35
+            description="Lower income - small federal deduction advantage (3k difference)"
         )
     ]

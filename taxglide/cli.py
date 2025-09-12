@@ -24,26 +24,92 @@ app = typer.Typer(help="Swiss tax CLI (SG + Federal), config driven")
 CONFIG_ROOT = Path(__file__).resolve().parents[1] / "configs"
 
 
-def _calc_once(year: int, income: int, picks: List[str]):
-    sg_cfg, fed_cfg, mult_cfg = load_configs(CONFIG_ROOT, year)
-    income_d = chf(income)
+def _resolve_incomes(
+    income: Optional[int] = None,
+    income_sg: Optional[int] = None, 
+    income_fed: Optional[int] = None
+) -> tuple[int, int]:
+    """Resolve income parameters to (sg_income, fed_income) tuple.
+    
+    Args:
+        income: Single income for both SG and Federal (backward compatibility)
+        income_sg: Specific SG taxable income
+        income_fed: Specific Federal taxable income
+        
+    Returns:
+        (sg_income, fed_income) tuple
+        
+    Raises:
+        ValueError: If invalid combination of parameters provided
+    """
+    # Scenario 1: Traditional single income (backward compatible)
+    if income is not None and income_sg is None and income_fed is None:
+        return (income, income)
+    
+    # Scenario 2: Separate SG and Federal incomes
+    if income is None and income_sg is not None and income_fed is not None:
+        return (income_sg, income_fed)
+    
+    # Invalid scenarios
+    if income is not None and (income_sg is not None or income_fed is not None):
+        raise ValueError(
+            "Cannot specify both --income and --income-sg/--income-fed. "
+            "Use either --income alone, or both --income-sg and --income-fed together."
+        )
+    
+    if (income_sg is None) != (income_fed is None):  # XOR - only one is provided
+        raise ValueError(
+            "When using separate incomes, both --income-sg and --income-fed must be provided."
+        )
+    
+    raise ValueError(
+        "Must provide either --income, or both --income-sg and --income-fed."
+    )
 
-    sg_simple = simple_tax_sg(income_d, sg_cfg)
+
+def _calc_once(year: int, income: int, picks: List[str]):
+    """Legacy function for backward compatibility. Uses same income for both SG and Federal."""
+    return _calc_once_separate(year, income, income, picks)
+
+
+def _calc_once_separate(year: int, sg_income: int, fed_income: int, picks: List[str]):
+    """Calculate taxes with separate SG and Federal taxable incomes.
+    
+    Args:
+        year: Tax year
+        sg_income: St. Gallen taxable income
+        fed_income: Federal taxable income  
+        picks: Multiplier codes to apply
+        
+    Returns:
+        Dict with tax calculation results
+    """
+    sg_cfg, fed_cfg, mult_cfg = load_configs(CONFIG_ROOT, year)
+    sg_income_d = chf(sg_income)
+    fed_income_d = chf(fed_income)
+
+    sg_simple = simple_tax_sg(sg_income_d, sg_cfg)
     sg_after = apply_multipliers(sg_simple, mult_cfg, MultPick(picks))
-    fed = tax_federal(income_d, fed_cfg)
+    fed = tax_federal(fed_income_d, fed_cfg)
 
     total = sg_after + fed
-    avg_rate = float(total / income_d) if income_d > 0 else 0.0
+    
+    # For average rate calculation, use the higher income as base (more conservative)
+    base_income = max(sg_income_d, fed_income_d)
+    avg_rate = float(total / base_income) if base_income > 0 else 0.0
 
-    # combined marginal via 1 CHF diff (finite difference)
+    # Combined marginal via 1 CHF diff (finite difference) - check both incomes
     eps = Decimal(1)
-    total_plus = apply_multipliers(simple_tax_sg(income_d + eps, sg_cfg), mult_cfg, MultPick(picks)) + tax_federal(income_d + eps, fed_cfg)
-    marginal_total = float(total_plus - total) / 1.0
+    sg_marginal = apply_multipliers(simple_tax_sg(sg_income_d + eps, sg_cfg), mult_cfg, MultPick(picks)) - sg_after
+    fed_marginal = tax_federal(fed_income_d + eps, fed_cfg) - fed
+    marginal_total = float(sg_marginal + fed_marginal) / 1.0
 
-    m_fed_h = federal_marginal_hundreds(income_d, fed_cfg)
+    m_fed_h = federal_marginal_hundreds(fed_income_d, fed_cfg)
 
     return {
-        "income": income,
+        "income_sg": sg_income,
+        "income_fed": fed_income,
+        "income": sg_income if sg_income == fed_income else None,  # For backward compatibility
         "federal": float(fed),
         "sg_simple": float(sg_simple),
         "sg_after_mult": float(sg_after),
@@ -58,19 +124,32 @@ def _calc_once(year: int, income: int, picks: List[str]):
 @app.command()
 def calc(
     year: int = typer.Option(..., help="Tax year, e.g., 2025"),
-    income: int = typer.Option(..., help="Taxable income (CHF)"),
+    income: Optional[int] = typer.Option(None, help="Taxable income for both SG and Federal (CHF)"),
+    income_sg: Optional[int] = typer.Option(None, help="St. Gallen taxable income (CHF)"),
+    income_fed: Optional[int] = typer.Option(None, help="Federal taxable income (CHF)"),
     pick: List[str] = typer.Option([], help="Codes to pick"),
     skip: List[str] = typer.Option([], help="Codes to skip (overrides defaults)"),
     json_out: bool = typer.Option(False, "--json", help="Output JSON"),
 ):
-    """Compute federal + SG taxes and show breakdown."""
+    """Compute federal + SG taxes and show breakdown.
+    
+    Use either:
+      --income 80000                           (same income for both SG and Federal)
+      --income-sg 78000 --income-fed 80000     (different incomes due to different deductions)
+    """
+    try:
+        sg_income, fed_income = _resolve_incomes(income, income_sg, income_fed)
+    except ValueError as e:
+        rprint({"error": str(e)})
+        raise typer.Exit(code=2)
+    
     # auto-pick defaults
     _, _, mult_cfg = load_configs(CONFIG_ROOT, year)
     default_picks = [i.code for i in mult_cfg.items if i.default_selected]
     codes = set(default_picks) | set(pick)
     codes -= set(skip)
 
-    res = _calc_once(year, income, sorted(codes))
+    res = _calc_once_separate(year, sg_income, fed_income, sorted(codes))
     if json_out:
         print(json.dumps(res, indent=2))
     else:
@@ -80,7 +159,9 @@ def calc(
 @app.command()
 def optimize(
     year: int = typer.Option(...),
-    income: int = typer.Option(...),
+    income: Optional[int] = typer.Option(None, help="Taxable income for both SG and Federal (CHF)"),
+    income_sg: Optional[int] = typer.Option(None, help="St. Gallen taxable income (CHF)"),
+    income_fed: Optional[int] = typer.Option(None, help="Federal taxable income (CHF)"),
     max_deduction: int = typer.Option(...),
     step: int = typer.Option(100, help="Deduction step (CHF)"),
     pick: List[str] = typer.Option([], help="Codes to pick"),
@@ -88,34 +169,67 @@ def optimize(
     json_out: bool = typer.Option(False, "--json"),
     tolerance_bp: float = typer.Option(10.0, help="Near-max ROI tolerance in basis points"),
 ):
+    """Find optimal deduction amounts.
+    
+    Use either:
+      --income 80000                           (same income for both SG and Federal)
+      --income-sg 78000 --income-fed 80000     (different incomes due to different deductions)
+    
+    Note: Optimization assumes the deduction applies equally to both SG and Federal incomes.
+    """
+    try:
+        sg_income, fed_income = _resolve_incomes(income, income_sg, income_fed)
+    except ValueError as e:
+        rprint({"error": str(e)})
+        raise typer.Exit(code=2)
+    
     sg_cfg, fed_cfg, mult_cfg = load_configs(CONFIG_ROOT, year)
     default_picks = [i.code for i in mult_cfg.items if i.default_selected]
     codes = set(default_picks) | set(pick)
     codes -= set(skip)
 
-    # Early validation for clearer CLI errors
+    # Early validation for clearer CLI errors - use the higher income for validation
+    base_income = max(sg_income, fed_income)
     try:
-        validate_optimization_inputs(Decimal(income), max_deduction, 1, step)
+        validate_optimization_inputs(Decimal(base_income), max_deduction, 1, step)
     except ValueError as e:
         rprint({"error": str(e)})
         raise typer.Exit(code=2)
 
-    def calc_fn(inc: Decimal):
-        sg_simple = simple_tax_sg(inc, sg_cfg)
+    # Store original incomes for reference
+    sg_income_decimal = Decimal(sg_income)
+    fed_income_decimal = Decimal(fed_income)
+    
+    def calc_fn(current_income: Decimal):
+        # Calculate how much was deducted from the base income
+        deduction_amount = Decimal(base_income) - current_income
+        
+        # Apply same deduction to both SG and Federal incomes
+        current_sg = sg_income_decimal - deduction_amount
+        current_fed = fed_income_decimal - deduction_amount
+        
+        # Ensure incomes don't go negative
+        current_sg = max(current_sg, Decimal(0))
+        current_fed = max(current_fed, Decimal(0))
+        
+        sg_simple = simple_tax_sg(current_sg, sg_cfg)
         sg_after = apply_multipliers(sg_simple, mult_cfg, MultPick(codes))
-        fed = tax_federal(inc, fed_cfg)
+        fed = tax_federal(current_fed, fed_cfg)
         total = sg_after + fed
         return {"total": total, "federal": fed}
 
     # Provide a context function so optimizer can narrate federal bracket before/after
-    def context_fn(inc: Decimal):
+    def context_fn(current_income: Decimal):
+        deduction_amount = Decimal(base_income) - current_income
+        current_sg = max(sg_income_decimal - deduction_amount, Decimal(0))
+        current_fed = max(fed_income_decimal - deduction_amount, Decimal(0))
         return {
-            "federal_segment": federal_segment_info(inc, fed_cfg),
-            "sg_bracket": sg_bracket_info(inc, sg_cfg),
+            "federal_segment": federal_segment_info(current_fed, fed_cfg),
+            "sg_bracket": sg_bracket_info(current_sg, sg_cfg),
         }
 
     out = optimize_deduction(
-        Decimal(income),
+        Decimal(base_income),  # Use higher income as baseline for optimization
         max_deduction,
         step,
         calc_fn,
@@ -235,7 +349,9 @@ def plot(
 @app.command()
 def scan(
     year: int = typer.Option(..., help="Tax year (e.g., 2025)"),
-    income: int = typer.Option(..., help="Original taxable income (CHF)"),
+    income: Optional[int] = typer.Option(None, help="Original taxable income for both SG and Federal (CHF)"),
+    income_sg: Optional[int] = typer.Option(None, help="St. Gallen taxable income (CHF)"),
+    income_fed: Optional[int] = typer.Option(None, help="Federal taxable income (CHF)"),
     max_deduction: int = typer.Option(..., help="Max deduction to explore (CHF)"),
     d_step: int = typer.Option(100, help="Deduction increment (CHF)"),
     pick: List[str] = typer.Option([], help="Codes to pick (multipliers)"),
@@ -251,58 +367,75 @@ def scan(
       - SG simple, SG after multipliers, Federal
       - federal segment (from/to/per100) for each new_income
       - local marginal percent (Δ100) around each new_income (optional)
+    
+    Use either:
+      --income 80000                           (same income for both SG and Federal)
+      --income-sg 78000 --income-fed 80000     (different incomes due to different deductions)
     """
+    try:
+        sg_income, fed_income = _resolve_incomes(income, income_sg, income_fed)
+    except ValueError as e:
+        rprint({"error": str(e)})
+        raise typer.Exit(code=2)
+        
     sg_cfg, fed_cfg, mult_cfg = load_configs(CONFIG_ROOT, year)
     default_picks = [i.code for i in mult_cfg.items if i.default_selected]
     codes = set(default_picks) | set(pick)
     codes -= set(skip)
     picks_sorted = sorted(codes)
 
-    # Validate bounds
+    # Validate bounds using higher income
+    base_income = max(sg_income, fed_income)
     try:
-        validate_optimization_inputs(Decimal(income), max_deduction, 0, max(1, d_step))
+        validate_optimization_inputs(Decimal(base_income), max_deduction, 0, max(1, d_step))
     except ValueError as e:
         rprint({"error": str(e)})
         raise typer.Exit(code=2)
 
-    # Helper to compute totals
-    def calc_all(inc: Decimal):
-        sg_simple = simple_tax_sg(inc, sg_cfg)
+    # Helper to compute totals with separate SG and Federal incomes
+    def calc_all(sg_inc: Decimal, fed_inc: Decimal):
+        sg_simple = simple_tax_sg(sg_inc, sg_cfg)
         sg_after = apply_multipliers(sg_simple, mult_cfg, MultPick(picks_sorted))
-        fed = tax_federal(inc, fed_cfg)
+        fed = tax_federal(fed_inc, fed_cfg)
         total = sg_after + fed
         return sg_simple, sg_after, fed, total
 
-    Y0 = Decimal(income)
-    _, _, _, T0 = calc_all(Y0)
+    SG0 = Decimal(sg_income)
+    FED0 = Decimal(fed_income)
+    _, _, _, T0 = calc_all(SG0, FED0)
 
     rows: List[Dict[str, Any]] = []
     eps = Decimal(100)
 
     for d in range(0, max_deduction + 1, max(1, d_step)):
-        y = Y0 - Decimal(d)
+        sg_y = SG0 - Decimal(d)
+        fed_y = FED0 - Decimal(d)
+        
+        # Ensure incomes don't go negative
+        sg_y = max(sg_y, Decimal(0))
+        fed_y = max(fed_y, Decimal(0))
 
-        sg_simple, sg_after, fed, total = calc_all(y)
+        sg_simple, sg_after, fed, total = calc_all(sg_y, fed_y)
         saved = T0 - total
         roi = (saved / Decimal(d)) if d > 0 else Decimal(0)
         roi_pct = float(roi * 100) if d > 0 else 0.0
 
-        # federal segment info at this y
-        fseg = federal_segment_info(y, fed_cfg)
+        # federal segment info at current federal income
+        fseg = federal_segment_info(fed_y, fed_cfg)
 
-        # local marginal around y (Δ100) if requested and feasible
+        # local marginal around current incomes (Δ100) if requested and feasible
         local_marginal_pct = None
         if include_local_marginal:
-            if y >= eps:
-                _, _, _, t_hi = calc_all(y)
-                _, _, _, t_lo = calc_all(y - eps)
+            if sg_y >= eps and fed_y >= eps:
+                _, _, _, t_hi = calc_all(sg_y, fed_y)
+                _, _, _, t_lo = calc_all(sg_y - eps, fed_y - eps)
                 local_marginal_pct = float((t_hi - t_lo) / eps * 100)
             else:
                 local_marginal_pct = float(0.0)
 
         rows.append({
             "deduction": d,
-            "new_income": float(y),
+            "new_income": float(max(sg_y, fed_y)),
             "total_tax": float(total),
             "saved": float(saved),
             "roi_percent": roi_pct,
@@ -348,25 +481,46 @@ def validate(
 @app.command() 
 def compare_brackets(
     year: int = typer.Option(...),
-    income: int = typer.Option(...),
-    deduction_amount: int = typer.Option(0, help="Amount to deduct"),
+    income: Optional[int] = typer.Option(None, help="Taxable income for both SG and Federal (CHF)"),
+    income_sg: Optional[int] = typer.Option(None, help="St. Gallen taxable income (CHF)"),
+    income_fed: Optional[int] = typer.Option(None, help="Federal taxable income (CHF)"),
+    deduction: int = typer.Option(0, "--deduction", help="Amount to deduct"),
 ):
-    """Show which tax brackets apply before/after deduction."""
+    """Show which tax brackets apply before/after deduction.
+    
+    Use either:
+      --income 80000                           (same income for both SG and Federal)
+      --income-sg 78000 --income-fed 80000     (different incomes due to different deductions)
+    """
+    try:
+        sg_income, fed_income = _resolve_incomes(income, income_sg, income_fed)
+    except ValueError as e:
+        rprint({"error": str(e)})
+        raise typer.Exit(code=2)
+        
     sg_cfg, fed_cfg, mult_cfg = load_configs(CONFIG_ROOT, year)
     
-    original_income = chf(income)
-    adjusted_income = chf(income - deduction_amount)
+    # Original incomes
+    original_sg_income = chf(sg_income)
+    original_fed_income = chf(fed_income)
+    
+    # Adjusted incomes (after deduction)
+    adjusted_sg_income = chf(sg_income - deduction)
+    adjusted_fed_income = chf(fed_income - deduction)
     
     # Federal bracket info
-    fed_before = federal_segment_info(original_income, fed_cfg)
-    fed_after = federal_segment_info(adjusted_income, fed_cfg)
+    fed_before = federal_segment_info(original_fed_income, fed_cfg)
+    fed_after = federal_segment_info(adjusted_fed_income, fed_cfg)
     # SG bracket info
-    sg_before = sg_bracket_info(original_income, sg_cfg)
-    sg_after = sg_bracket_info(adjusted_income, sg_cfg)
+    sg_before = sg_bracket_info(original_sg_income, sg_cfg)
+    sg_after = sg_bracket_info(adjusted_sg_income, sg_cfg)
     
     rprint({
-        "original_income": income,
-        "adjusted_income": float(adjusted_income),
+        "original_sg_income": sg_income,
+        "original_fed_income": fed_income,
+        "adjusted_sg_income": float(adjusted_sg_income),
+        "adjusted_fed_income": float(adjusted_fed_income),
+        "deduction_amount": deduction,
         "federal_bracket_before": fed_before,
         "federal_bracket_after": fed_after,
         "federal_bracket_changed": fed_before != fed_after,
