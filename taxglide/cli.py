@@ -151,24 +151,13 @@ def calc(
 
     res = _calc_once_separate(year, sg_income, fed_income, sorted(codes))
     
-    # Add FEUER warning if not selected
-    feuer_selected = 'FEUER' in codes
-    feuer_item = None
-    for item in mult_cfg.items:
-        if item.code == 'FEUER':
-            feuer_item = item
-            break
-    
-    if feuer_item and not feuer_selected:
+    # Add FEUER warning if not selected (simplified)
+    feuer_item = next((item for item in mult_cfg.items if item.code == 'FEUER'), None)
+    if feuer_item and 'FEUER' not in codes:
         # Calculate potential FEUER tax
         sg_simple = res["sg_after_mult"] / sum(item.rate for item in mult_cfg.items if item.code in codes)
         potential_feuer_tax = sg_simple * feuer_item.rate
-        res["feuer_warning"] = {
-            "message": "⚠️  This might not be the whole picture - Feuerwehr tax might apply if you're not exempt from fire service taxes.",
-            "potential_feuer_tax": float(potential_feuer_tax),
-            "rate": float(feuer_item.rate),
-            "note": f"Add --pick FEUER to include {potential_feuer_tax:.2f} CHF fire service tax in calculations."
-        }
+        res["feuer_warning"] = f"⚠️ Missing FEUER tax: +{potential_feuer_tax:.0f} CHF (add --pick FEUER)"
     
     if json_out:
         print(json.dumps(res, indent=2))
@@ -266,63 +255,34 @@ def optimize(
         new_sg_income = sg_income - deduction
         new_fed_income = fed_income - deduction
         
-        # Add detailed income information
-        sweet_spot["original_incomes"] = {
-            "sg_income": sg_income,
-            "fed_income": fed_income,
-            "same_income_used": sg_income == fed_income
-        }
-        
-        # Add multiplier information
-        sweet_spot["picks"] = sorted(codes)
-        
-        # Calculate multiplier breakdown at sweet spot if useful
-        current_sg = max(sg_income_decimal - Decimal(deduction), Decimal(0))
-        sg_simple_at_spot = simple_tax_sg(current_sg, sg_cfg)
-        
-        multiplier_breakdown = {}
-        total_multiplier = Decimal(0)
-        for item in mult_cfg.items:
-            if item.code in codes:
-                rate_decimal = Decimal(str(item.rate))
-                multiplier_breakdown[item.code] = {
-                    "name": item.name,
-                    "rate": float(item.rate),
-                    "tax_amount": float(sg_simple_at_spot * rate_decimal)
-                }
-                total_multiplier += rate_decimal
-        
-        sweet_spot["multiplier_details"] = {
-            "sg_simple_tax": float(sg_simple_at_spot),
-            "total_multiplier": float(total_multiplier),
-            "breakdown": multiplier_breakdown
-        }
-        
-        # Add FEUER warning and amount if not selected
-        feuer_selected = 'FEUER' in codes
-        feuer_item = None
-        for item in mult_cfg.items:
-            if item.code == 'FEUER':
-                feuer_item = item
-                break
-        
-        if feuer_item and not feuer_selected:
-            potential_feuer_tax = float(sg_simple_at_spot * Decimal(str(feuer_item.rate)))
-            sweet_spot["feuer_warning"] = {
-                "message": "⚠️  This might not be the whole picture - Feuerwehr tax might apply if you're not exempt from fire service taxes.",
-                "potential_feuer_tax": potential_feuer_tax,
-                "rate": float(feuer_item.rate),
-                "note": f"Add --pick FEUER to include {potential_feuer_tax:.2f} CHF fire service tax in calculations."
+        # Add income information (simplified)
+        if sg_income != fed_income:
+            sweet_spot["income_details"] = {
+                "original_sg": sg_income,
+                "original_fed": fed_income,
+                "after_deduction_sg": float(new_sg_income),
+                "after_deduction_fed": float(new_fed_income)
             }
+        
+        # Add concise multiplier info with FEUER warning if needed
+        sweet_spot["multipliers"] = {
+            "applied": sorted(codes),
+            "total_rate": float(sum(Decimal(str(item.rate)) for item in mult_cfg.items if item.code in codes))
+        }
+        
+        # Add FEUER warning if not selected (consolidated)
+        feuer_item = next((item for item in mult_cfg.items if item.code == 'FEUER'), None)
+        if feuer_item and 'FEUER' not in codes:
+            current_sg = max(sg_income_decimal - Decimal(deduction), Decimal(0))
+            sg_simple_at_spot = simple_tax_sg(current_sg, sg_cfg)
+            potential_feuer_tax = float(sg_simple_at_spot * Decimal(str(feuer_item.rate)))
+            sweet_spot["multipliers"]["feuer_warning"] = f"⚠️ Missing FEUER tax: +{potential_feuer_tax:.0f} CHF (add --pick FEUER)"
         
         if sg_income == fed_income:
             # Legacy single income case - keep simple output
             sweet_spot["new_income"] = float(new_sg_income)  # Same for both
         else:
-            # Separate income case - show both new incomes
-            sweet_spot["new_income_sg"] = float(new_sg_income)
-            sweet_spot["new_income_fed"] = float(new_fed_income)
-            # Keep the single value for backward compatibility (use higher income)
+            # Separate income case - new_income for compatibility, details in income_details
             sweet_spot["new_income"] = float(max(new_sg_income, new_fed_income))
 
     # prettify Decimals for JSON friendliness
@@ -333,27 +293,30 @@ def optimize(
             return [coerce(x) for x in d]
         return d
 
-    # Add multiplier information to the base output
-    out["multiplier_picks"] = sorted(codes)
+    # Add basic multiplier info at top level
+    out["multipliers_applied"] = sorted(codes)
     
-    # Add FEUER warning at top level if not selected
-    feuer_selected = 'FEUER' in codes
-    feuer_item = None
-    for item in mult_cfg.items:
-        if item.code == 'FEUER':
-            feuer_item = item
-            break
-    
-    if feuer_item and not feuer_selected:
-        # Calculate potential FEUER tax at base income
-        sg_simple_base = simple_tax_sg(sg_income_decimal, sg_cfg)
-        potential_feuer_tax_base = float(sg_simple_base * Decimal(str(feuer_item.rate)))
-        out["feuer_warning"] = {
-            "message": "⚠️  This might not be the whole picture - Feuerwehr tax might apply if you're not exempt from fire service taxes.",
-            "potential_feuer_tax_at_base_income": potential_feuer_tax_base,
-            "rate": float(feuer_item.rate),
-            "note": f"Add --pick FEUER to include approximately {potential_feuer_tax_base:.0f} CHF fire service tax in calculations."
+    # Simplify output by hiding overly verbose sections
+    if out.get("sweet_spot") and "why" in out["sweet_spot"]:
+        why = out["sweet_spot"]["why"]
+        # Keep only essential info
+        simplified_why = {
+            "roi_percent": why.get("roi_at_spot_percent"),
+            "plateau_width_chf": why.get("plateau_width_chf"),
+            "federal_bracket_changed": why.get("federal_bracket_changed"),
+            "marginal_rate_percent": why.get("local_marginal_percent_at_spot")
         }
+        # Add notes if they exist
+        if why.get("notes"):
+            simplified_why["notes"] = why["notes"]
+            
+        out["sweet_spot"]["optimization_summary"] = simplified_why
+        # Remove verbose why section
+        del out["sweet_spot"]["why"]
+        
+    # Remove redundant marginal info at top level (it's in optimization_summary now)
+    out.pop("local_marginal_percent_at_best", None)
+    out.pop("local_marginal_percent_at_spot", None)
     
     out = {k: coerce(v) for k, v in out.items()}
 
