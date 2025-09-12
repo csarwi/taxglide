@@ -1,10 +1,11 @@
 from decimal import Decimal
 from math import ceil, floor
-from typing import Tuple
+from typing import Tuple, Optional, Dict, Any
 from .models import FederalConfig, chf
 from .rounding import final_round
 
 StepMode = {"ceil": ceil, "floor": floor}
+
 
 def _segment_for_income(income: int, cfg: FederalConfig):
     for seg in cfg.segments:
@@ -27,7 +28,7 @@ def tax_federal(income: Decimal, cfg: FederalConfig) -> Decimal:
         start = seg.at_income
         delta = max(0, i - start)
         if cfg.rounding.step_mode == "ceil":
-            units = 0 if delta == 0 else ( (delta + step - 1) // step )
+            units = 0 if delta == 0 else ((delta + step - 1) // step)
         else:
             units = delta // step
         tax = base_at + per100 * units
@@ -37,11 +38,29 @@ def tax_federal(income: Decimal, cfg: FederalConfig) -> Decimal:
 
 
 def federal_marginal_hundreds(income: Decimal, cfg: FederalConfig) -> float:
-    """Marginal rate aligned to full hundreds (your rule).
-    m(i) = [T(h) - T(h-100)] / 100, with h = ceil(i/100)*100
+    """
+    Marginal per 100 CHF for the *current* hundred-block (backward difference).
+    m(i) = [T(h) - T(h-100)] / 100, with h = floor(i/100)*100.
+    This reflects the actual marginal that applies to income inside the current
+    block, avoiding the upward bias of always rounding to the next 100.
     """
     i = int(income)
-    h = ( (i + 99) // 100 ) * 100
+    h = (i // 100) * 100
     t_hi = tax_federal(Decimal(h), cfg)
     t_lo = tax_federal(Decimal(max(h - 100, 0)), cfg)
     return float((t_hi - t_lo) / Decimal(100))
+
+
+def federal_segment_info(income: Decimal | int, cfg: FederalConfig) -> Dict[str, Any]:
+    """
+    Lightweight inspector used by the optimizer for 'why' explanations.
+    Returns: {'from': int, 'to': Optional[int], 'per100': float, 'at_income': int}
+    """
+    i = int(income)
+    seg = _segment_for_income(i, cfg)
+    return {
+        "from": seg.from_,
+        "to": seg.to,
+        "per100": float(seg.per100),
+        "at_income": seg.at_income,
+    }
