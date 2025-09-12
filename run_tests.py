@@ -1,61 +1,97 @@
 #!/usr/bin/env python3
 """
-Convenient test runner script for TaxGlide tests.
+Convenient test runner for TaxGlide:
+- Runs pytest (category shortcuts supported)
+- If tests pass: ALWAYS build sdist+wheel and reinstall the package from the fresh wheel
 
-Usage:
-    python run_tests.py                    # Run all tests
-    python run_tests.py --coverage         # Run with coverage
-    python run_tests.py --verbose          # Run with verbose output
-    python run_tests.py calculation        # Run only calculation tests
+Examples:
+  python run_tests.py
+  python run_tests.py --coverage -q
+  python run_tests.py calc -k roi
 """
 
 import sys
 import subprocess
 from pathlib import Path
+import glob
+import shutil
 
-def run_tests():
-    """Run pytest with appropriate options."""
-    
-    # Base pytest command
-    cmd = ["python", "-m", "pytest", "tests/"]
-    
-    # Check arguments
-    args = sys.argv[1:] if len(sys.argv) > 1 else []
-    
-    # Handle help
-    if "--help" in args or "-h" in args:
-        print(__doc__)
-        print("\nAdditional examples:")
-        print("  python run_tests.py --coverage --verbose    # Coverage with verbose output")
-        print("  python run_tests.py calculation             # Only calculation tests")
-        print("  python run_tests.py opt --verbose           # Only optimization tests (verbose)")
-        return 0
-    
-    if "--coverage" in args:
-        cmd.extend(["--cov=taxglide", "--cov-report=term-missing"])
-        args.remove("--coverage")
-    
-    if "--verbose" in args:
-        cmd.append("-v")
-        args.remove("--verbose")
-    
-    # If specific test category is specified
-    if args:
-        test_category = args[0]
-        if test_category in ["calculation", "calc"]:
-            cmd[-1] = "tests/test_calculation.py"
-        elif test_category in ["optimization", "opt"]:
-            cmd[-1] = "tests/test_optimization.py"
-        elif test_category in ["config", "validation"]:
-            cmd[-1] = "tests/test_config_validation.py"
-        else:
-            print(f"Unknown test category: {test_category}")
-            print("Available categories: calculation, optimization, config")
-            return 1
-    
-    # Run the command
+PROJECT_ROOT = Path(__file__).resolve().parent
+PACKAGE_NAME = "taxglide"  # pip distribution name
+
+def _run(cmd: list[str]) -> int:
     print(f"Running: {' '.join(cmd)}")
     return subprocess.run(cmd).returncode
+
+def _check_call(cmd: list[str]) -> None:
+    print(f"Running: {' '.join(cmd)}")
+    subprocess.check_call(cmd)
+
+def _clean_dist(dist: Path) -> None:
+    if dist.exists():
+        for p in dist.glob("*"):
+            try:
+                p.unlink()
+            except IsADirectoryError:
+                shutil.rmtree(p)
+    else:
+        dist.mkdir(parents=True, exist_ok=True)
+
+def run_tests() -> int:
+    args = sys.argv[1:]
+
+    # simple flags we still support (no effect on build/reinstall behavior)
+    do_coverage = False
+    do_verbose = False
+    if "--coverage" in args:
+        do_coverage = True
+        args.remove("--coverage")
+    if "--verbose" in args:
+        do_verbose = True
+        args.remove("--verbose")
+
+    # category mapping (optional first arg)
+    pytest_target = "tests/"
+    rest = args[:]  # pass-through for extra pytest args
+    if rest:
+        cat = rest[0]
+        mapping = {
+            "calculation": "tests/test_calculation.py",
+            "calc":        "tests/test_calculation.py",
+            "optimization":"tests/test_optimization.py",
+            "opt":         "tests/test_optimization.py",
+            "config":      "tests/test_config_validation.py",
+            "validation":  "tests/test_config_validation.py",
+        }
+        if cat in mapping:
+            pytest_target = mapping[cat]
+            rest = rest[1:]  # keep remaining args for pytest
+
+    # build pytest command with same interpreter
+    cmd = [sys.executable, "-m", "pytest", pytest_target]
+    if do_coverage:
+        cmd += ["--cov=taxglide", "--cov-report=term-missing"]
+    if do_verbose:
+        cmd.append("-v")
+    cmd += rest
+
+    # 1) run tests
+    code = _run(cmd)
+    if code != 0:
+        print("❌ tests failed; skipping build & reinstall.")
+        return code
+    print("✅ tests passed.")
+
+    # 2) always refresh editable install
+    try:
+        subprocess.check_call([sys.executable, "-m", "pip", "install", "-e", str(PROJECT_ROOT)])
+        print("✅ refreshed editable install (pip install -e .)")
+    except subprocess.CalledProcessError as e:
+        print(f"❌ editable install failed with exit code {e.returncode}")
+        return e.returncode
+
+
+    return 0
 
 if __name__ == "__main__":
     sys.exit(run_tests())

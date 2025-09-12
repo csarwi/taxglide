@@ -8,17 +8,19 @@ StepMode = {"ceil": ceil, "floor": floor}
 
 
 def _segment_for_income(income: int, cfg: FederalConfig):
+    if income < cfg.segments[0].from_:
+        return cfg.segments[0]
     for seg in cfg.segments:
         lo = seg.from_
         hi = seg.to if seg.to is not None else 10**12
         if lo <= income <= hi:
             return seg
-    # if higher than all, use last
     return cfg.segments[-1]
 
 
+
 def tax_federal(income: Decimal, cfg: FederalConfig) -> Decimal:
-    i = int(income)
+    i = max(0, int(income))  # guard against negative inputs
     seg = _segment_for_income(i, cfg)
     base_at = Decimal(str(seg.base_tax_at))
     per100 = Decimal(str(seg.per100))
@@ -48,7 +50,7 @@ def federal_marginal_hundreds(income: Decimal, cfg: FederalConfig) -> float:
     This reflects the actual marginal that applies to income inside the current
     block, avoiding the upward bias of always rounding to the next 100.
     """
-    i = int(income)
+    i = max(0, int(income))          # guard against negative inputs
     h = (i // 100) * 100
     t_hi = tax_federal(Decimal(h), cfg)
     t_lo = tax_federal(Decimal(max(h - 100, 0)), cfg)

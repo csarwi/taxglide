@@ -83,6 +83,12 @@ def collect_files():
         dirs_to_remove = []
         for d in dirs:
             dir_path = os.path.join(root, d)
+
+            # Exclude the "tests" folder entirely
+            if d == "tests":
+                dirs_to_remove.append(d)
+                continue
+
             if is_ignored(dir_path, root_dir, gitignore_patterns):
                 dirs_to_remove.append(d)
         

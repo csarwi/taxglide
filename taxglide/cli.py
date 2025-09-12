@@ -154,9 +154,8 @@ def calc(
     # Add FEUER warning if not selected (simplified)
     feuer_item = next((item for item in mult_cfg.items if item.code == 'FEUER'), None)
     if feuer_item and 'FEUER' not in codes:
-        # Calculate potential FEUER tax
-        sg_simple = res["sg_after_mult"] / sum(item.rate for item in mult_cfg.items if item.code in codes)
-        potential_feuer_tax = sg_simple * feuer_item.rate
+        sg_simple_base = Decimal(str(res["sg_simple"]))  # already computed base
+        potential_feuer_tax = sg_simple_base * Decimal(str(feuer_item.rate))
         res["feuer_warning"] = f"⚠️ Missing FEUER tax: +{potential_feuer_tax:.0f} CHF (add --pick FEUER)"
     
     if json_out:
@@ -594,8 +593,9 @@ def compare_brackets(
     original_fed_income = chf(fed_income)
     
     # Adjusted incomes (after deduction)
-    adjusted_sg_income = chf(sg_income - deduction)
-    adjusted_fed_income = chf(fed_income - deduction)
+    adjusted_sg_income = chf(max(0, sg_income - deduction))
+    adjusted_fed_income = chf(max(0, fed_income - deduction))
+
     
     # Federal bracket info
     fed_before = federal_segment_info(original_fed_income, fed_cfg)

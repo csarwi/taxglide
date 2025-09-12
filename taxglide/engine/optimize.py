@@ -214,10 +214,14 @@ def optimize_deduction(
         sg_base_maybe = (T0 - fed_base_maybe) if (fed_base_maybe is not None) else None
         roi_spot = _roi(saved_spot, d_spot)  # Decimal
 
-        # local marginal at the sweet spot (Δ100)
-        r_spot_lo = calc_fn(y_spot - eps if y_spot >= eps else y_spot)
-        T_spot_lo = _as_total(r_spot_lo)
-        local_marginal_percent_at_spot = float((T_spot - T_spot_lo) / (y_spot - (y_spot - eps if y_spot >= eps else y_spot)) * 100) if y_spot > 0 else float(0.0)
+        # local marginal at the sweet spot (Δ100), with guard for y_spot < 100
+        step_den = eps if y_spot >= eps else (y_spot if y_spot > 0 else Decimal(0))
+        if step_den > 0:
+            r_spot_lo = calc_fn(y_spot - step_den)
+            T_spot_lo = _as_total(r_spot_lo)
+            local_marginal_percent_at_spot = float((T_spot - T_spot_lo) / step_den * 100)
+        else:
+            local_marginal_percent_at_spot = 0.0
 
         # federal bracket awareness (optional context_fn)
         ctx_before = context_fn(income) if context_fn else None
