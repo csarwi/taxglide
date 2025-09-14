@@ -64,6 +64,8 @@ def run_tests() -> int:
             "validation":  "tests/test_config_validation.py",
             "married":     "tests/test_married_filing.py",
             "filing":      "tests/test_married_filing.py",
+            "range":       "tests/test_income_range_validation.py",
+            "income":      "tests/test_income_range_validation.py",
         }
         if cat in mapping:
             pytest_target = mapping[cat]

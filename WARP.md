@@ -47,6 +47,7 @@ python -m pytest tests/ -v
 python run_tests.py calculation
 python run_tests.py optimization  
 python run_tests.py config
+python run_tests.py range           # Income range validation
 
 # Run with coverage report
 python run_tests.py --coverage
@@ -229,11 +230,77 @@ git push
 2. Re-run tests to confirm the fix
 3. Never commit broken code
 
+## Income Range Validation
+
+TaxGlide includes comprehensive income range validation to ensure tax calculations are reasonable across the full spectrum of Swiss incomes (typically 500 to 200,000 CHF).
+
+### Quick Validation
+```bash
+# Tax calculation validation (500-200K CHF, 1K steps)
+python tests/validate_income_range.py
+
+# Customizable tax calculation validation
+python tests/validate_income_custom.py --start 10000 --end 100000 --step 5000 --verbose
+python tests/validate_income_custom.py --filing-status married_joint --include-feuer
+
+# Optimization validation across income ranges
+python tests/validate_optimization_range.py --verbose
+python tests/validate_optimization_range.py --filing-status married_joint
+
+# Comprehensive optimization loop (like income validation loop)
+python tests/validate_optimization_loop.py --start 15000 --end 200000 --step 1000
+python tests/validate_optimization_loop.py --start 20000 --end 100000 --step 2000
+```
+
+### What Gets Validated
+
+#### Tax Calculations
+- **Monotonicity**: Taxes increase (or stays equal) with higher income
+- **Rate Bounds**: Average rates 0-35%, marginal rates 0-50% (Swiss realistic bounds)
+- **Progressivity**: Higher incomes have higher average tax rates
+- **Component Consistency**: Federal + SG components add up correctly
+- **Bracket Transitions**: Smooth transitions between tax brackets
+
+#### Optimization Suggestions
+- **Deduction Reasonableness**: Suggestions within specified max deduction limits
+- **ROI Validity**: Return on investment is positive and realistic (typically 15-40%)
+- **Income Reduction**: New income after deduction is appropriately lower
+- **Tax Savings**: Actual tax savings match calculated projections
+- **Cross-Income Consistency**: Optimization works across all income levels
+
+### Expected Results
+
+#### Tax Calculations
+- Average tax rates: 0-26% across income range
+- Marginal tax rates: 0-23% (with jumps at bracket boundaries)
+- One normal large jump: 0% to 9.7% when entering taxable income (~12K CHF)
+- Progressive taxation: Low income ~1% average, high income ~26% average
+
+#### Optimization Performance
+- ROI range: 15-40% (Swiss tax system offers excellent optimization opportunities)
+- Higher-income ROI may exceed lower-income ROI due to bracket effects
+- Deduction suggestions typically 2K-20K CHF depending on income level
+- Tax savings: 0.5-3% of gross income through optimal deductions
+
+## Documentation Guidelines
+
+### ⚠️ IMPORTANT: No Individual README Files
+**Do NOT create separate README files for individual features, components, or tools.** All documentation should be consolidated in this single WARP.md file.
+
+**Examples of what NOT to create:**
+- `INCOME_RANGE_VALIDATION.md`
+- `OPTIMIZATION_GUIDE.md` 
+- `CONFIG_SETUP.md`
+- `tests/README.md`
+
+**Instead:** Add all relevant information to the appropriate sections in this WARP.md file.
+
 ## Important Notes
 
-- Comprehensive test suite with 39 tests including real Swiss tax value validation (≤1 CHF accuracy)
+- Comprehensive test suite with real Swiss tax value validation (≤1 CHF accuracy)
 - The codebase was primarily written with AI assistance (ChatGPT-5 and Claude)
 - All calculations follow official Swiss tax rules and rounding methods
 - Configuration files must be validated after any changes using `taxglide validate`
 - The optimization algorithm prioritizes conservative recommendations (end of plateau) over pure maximum ROI
 - Tests serve as documentation for expected behavior and edge cases
+- Income range validation ensures calculations are reasonable across 500-200K CHF range
