@@ -177,4 +177,10 @@ poetry.toml
 # LSP config files
 pyrightconfig.json
 
+# Nuitka build artifacts
+*.build/
+*.dist/
+*.onefile-build/
+nuitka-crash-report.xml
+
 # End of https://www.toptal.com/developers/gitignore/api/python
