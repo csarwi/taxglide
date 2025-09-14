@@ -41,11 +41,13 @@ def _get_adaptive_tolerance_bp(income: int) -> float:
         return 100.0  # 1.0% - wide tolerance for very flat curves
 
 
-def _print_optimization_result(result: dict, tolerance_bp: float, tolerance_source: str, base_income: int):
-    """Print a clean, user-friendly optimization result."""
+def _print_optimization_result(result: dict, tolerance_bp: float, tolerance_source: str, base_income: int, max_deduction: int = None):
+    """Print a comprehensive, user-friendly optimization result."""
     from rich.console import Console
     from rich.panel import Panel
     from rich.text import Text
+    from rich.table import Table
+    from rich.columns import Columns
     
     console = Console()
     
@@ -76,17 +78,107 @@ def _print_optimization_result(result: dict, tolerance_bp: float, tolerance_sour
     
     console.print(Panel(result_text, title="TaxGlide Optimization", border_style="green"))
     
-    # Show adaptive retry info if it was used
-    adaptive_info = result.get("adaptive_retry_used")
-    if adaptive_info:
-        console.print(f"\n🔄 Enhanced with adaptive optimization (retried with {adaptive_info['chosen_tolerance_bp']:.0f}bp tolerance)", 
-                     style="dim blue")
+    # Detailed tax breakdown
+    baseline = sweet_spot.get("baseline", {})
+    if baseline:
+        tax_table = Table(title="📊 Tax Breakdown", show_header=True, header_style="bold blue")
+        tax_table.add_column("Component", style="cyan")
+        tax_table.add_column("Before Deduction", justify="right", style="red")
+        tax_table.add_column("After Deduction", justify="right", style="green")
+        tax_table.add_column("Savings", justify="right", style="yellow")
+        
+        fed_before = baseline.get("federal_tax", 0)
+        fed_after = sweet_spot.get("federal_tax_at_spot", 0)
+        fed_savings = fed_before - fed_after
+        
+        sg_before = baseline.get("sg_tax", 0)
+        sg_after = sweet_spot.get("sg_tax_at_spot", 0)
+        sg_savings = sg_before - sg_after
+        
+        total_before = baseline.get("total_tax", 0)
+        total_after = sweet_spot.get("total_tax_at_spot", 0)
+        
+        tax_table.add_row("Federal Tax", f"{fed_before:,.0f} CHF", f"{fed_after:,.0f} CHF", f"{fed_savings:,.0f} CHF")
+        tax_table.add_row("SG Tax", f"{sg_before:,.0f} CHF", f"{sg_after:,.0f} CHF", f"{sg_savings:,.0f} CHF")
+        tax_table.add_row("[bold]Total Tax", f"[bold]{total_before:,.0f} CHF", f"[bold]{total_after:,.0f} CHF", f"[bold]{tax_saved:,.0f} CHF")
+        
+        console.print("\n", tax_table)
     
-    # Concise technical details (optional)
+    # Optimization details panel
     opt_summary = sweet_spot.get("optimization_summary", {})
-    if opt_summary.get("plateau_width_chf"):
-        console.print(f"\n📊 Technical: {opt_summary['plateau_width_chf']:,} CHF ROI plateau, "
-                     f"{tolerance_bp:.0f}bp tolerance ({tolerance_source})", style="dim")
+    details_text = Text()
+    details_text.append("🎯 OPTIMIZATION DETAILS\n\n", style="bold blue")
+    details_text.append(f"Strategy: {sweet_spot.get('explanation', 'N/A')}\n", style="italic")
+    
+    if opt_summary:
+        plateau_width = opt_summary.get("plateau_width_chf", 0)
+        marginal_rate = opt_summary.get("marginal_rate_percent", 0)
+        bracket_changed = opt_summary.get("federal_bracket_changed", False)
+        
+        details_text.append(f"ROI Plateau: {plateau_width:,} CHF wide\n")
+        details_text.append(f"Marginal Tax Rate: {marginal_rate:.1f}%\n")
+        details_text.append(f"Federal Bracket Change: {'Yes' if bracket_changed else 'No'}\n")
+        if max_deduction:
+            details_text.append(f"Utilization: {deduction / max_deduction:.1%} of max deduction\n")
+    
+    # Add tolerance info
+    details_text.append(f"\nTolerance: {tolerance_bp:.0f} basis points ({tolerance_source})")
+    
+    console.print(Panel(details_text, title="Technical Analysis", border_style="blue"))
+    
+    # Adaptive retry information
+    adaptive_info = result.get("adaptive_retry_used")
+    retry_info = result.get("adaptive_retry_info")
+    if adaptive_info and retry_info:
+        retry_text = Text()
+        retry_text.append("🔄 ADAPTIVE OPTIMIZATION APPLIED\n\n", style="bold magenta")
+        retry_text.append(f"Reason: Low utilization detected ({retry_info['triggered_due_to_low_utilization']:.1%} < {retry_info['utilization_threshold']:.0%} threshold)\n")
+        retry_text.append(f"Selected: {adaptive_info['chosen_tolerance_bp']:.0f}bp tolerance ({adaptive_info['selection_reason'].replace('_', ' ')})\n")
+        retry_text.append(f"ROI change: {adaptive_info['roi_improvement']:+.1f}%\n")
+        retry_text.append(f"Utilization change: {adaptive_info['utilization_improvement']:+.1%}")
+        
+        console.print("\n", Panel(retry_text, title="Adaptive Enhancement", border_style="magenta"))
+        
+        # Show alternative results table
+        if retry_info.get("retry_results_tested"):
+            alt_table = Table(title="Alternative Tolerance Results", show_header=True, header_style="bold magenta")
+            alt_table.add_column("Tolerance (bp)", justify="center")
+            alt_table.add_column("Deduction", justify="right")
+            alt_table.add_column("Tax Saved", justify="right")
+            alt_table.add_column("ROI", justify="right")
+            alt_table.add_column("Utilization", justify="right")
+            
+            # Add initial result
+            initial = retry_info["initial_result"]
+            alt_table.add_row(
+                f"{initial['tolerance_bp']:.0f}",
+                f"{initial['deduction']:,} CHF",
+                "N/A",
+                f"{initial['roi_percent']:.1f}%", 
+                f"{initial['utilization_ratio']:.1%}",
+                style="dim"
+            )
+            
+            # Add retry results
+            for retry in retry_info["retry_results_tested"]:
+                style = "bold green" if retry["tolerance_bp"] == adaptive_info["chosen_tolerance_bp"] else None
+                alt_table.add_row(
+                    f"{retry['tolerance_bp']:.0f}",
+                    f"{retry['deduction']:,} CHF",
+                    f"{retry['tax_saved']:,.0f} CHF",
+                    f"{retry['roi_percent']:.1f}%",
+                    f"{retry['utilization_ratio']:.1%}",
+                    style=style
+                )
+            
+            console.print("\n", alt_table)
+    
+    # Multipliers applied
+    if multipliers.get("applied"):
+        mult_text = Text()
+        mult_text.append(f"📎 Applied Multipliers: {', '.join(multipliers['applied'])}\n", style="cyan")
+        mult_text.append(f"Total Rate: {multipliers.get('total_rate', 0):.2f}%")
+        console.print("\n", mult_text)
 
 
 def _resolve_incomes(
@@ -444,7 +536,7 @@ def optimize(
         print(json.dumps(out, indent=2))
     else:
         # Clean, user-friendly output for terminal use
-        _print_optimization_result(out, tolerance_bp, tolerance_source, base_income)
+        _print_optimization_result(out, tolerance_bp, tolerance_source, base_income, max_deduction)
 
 
 @app.command()
