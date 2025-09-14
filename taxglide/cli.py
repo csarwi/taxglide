@@ -26,6 +26,43 @@ CONFIG_ROOT = Path(__file__).resolve().parents[1] / "configs"
 
 VALID_FILING_STATUSES = {"single", "married_joint"}
 
+def _create_console_with_imports():
+    """Create Rich console with all required imports."""
+    from rich.console import Console
+    from rich.panel import Panel
+    from rich.text import Text
+    from rich.table import Table
+    
+    return Console(), Panel, Text, Table
+
+
+def _print_multiplier_info(console, Text, multiplier_codes: List[str], mult_cfg, sg_simple: float = None):
+    """Print multiplier information with factor calculation.
+    
+    Args:
+        console: Rich console instance
+        Text: Rich Text class
+        multiplier_codes: List of applied multiplier codes  
+        mult_cfg: Multipliers configuration
+        sg_simple: SG simple tax amount (for factor calculation)
+    """
+    if multiplier_codes:
+        from decimal import Decimal
+        mult_text = Text()
+        mult_text.append(f"📎 Applied Multipliers: {', '.join(multiplier_codes)}\n", style="cyan")
+        
+        # Calculate total factor
+        total_rate = float(sum(Decimal(str(item.rate)) for item in mult_cfg.items if item.code in multiplier_codes))
+        mult_text.append(f"Total Factor: ×{total_rate:.2f}  (={total_rate*100:.0f}% of SG simple)")
+        console.print("\n", mult_text)
+
+
+def _print_feuer_warning_if_present(text_obj, feuer_warning: str):
+    """Add FEUER warning to a Rich Text object if present."""
+    if feuer_warning:
+        text_obj.append(f"\n\n{feuer_warning}", style="yellow")
+
+
 def _validate_filing_status(value: str) -> str:
     """Validate filing status parameter.
     
@@ -64,12 +101,7 @@ def _get_adaptive_tolerance_bp(income: int) -> float:
 
 def _print_optimization_result(result: dict, tolerance_bp: float, tolerance_source: str, base_income: int, max_deduction: int = None):
     """Print a comprehensive, user-friendly optimization result."""
-    from rich.console import Console
-    from rich.panel import Panel
-    from rich.text import Text
-    from rich.table import Table
-    
-    console = Console()
+    console, Panel, Text, Table = _create_console_with_imports()
     
     sweet_spot = result.get("sweet_spot")
     if not sweet_spot:
@@ -93,8 +125,7 @@ def _print_optimization_result(result: dict, tolerance_bp: float, tolerance_sour
     # Add FEUER warning if present
     multipliers = sweet_spot.get("multipliers", {})
     feuer_warning = multipliers.get("feuer_warning")
-    if feuer_warning:
-        result_text.append(f"\n\n{feuer_warning}", style="yellow")
+    _print_feuer_warning_if_present(result_text, feuer_warning)
     
     console.print(Panel(result_text, title="TaxGlide Optimization", border_style="green"))
     
@@ -193,8 +224,10 @@ def _print_optimization_result(result: dict, tolerance_bp: float, tolerance_sour
             
             console.print("\n", alt_table)
     
-    # Multipliers applied
+    # Multipliers applied - use shared function
     if multipliers.get("applied"):
+        # We need to get mult_cfg to calculate the factor properly
+        # For now, use the total_rate that was already calculated in the optimize function
         mult_text = Text()
         mult_text.append(f"📎 Applied Multipliers: {', '.join(multipliers['applied'])}\n", style="cyan")
         factor = multipliers.get("total_rate", 0.0)
@@ -202,14 +235,9 @@ def _print_optimization_result(result: dict, tolerance_bp: float, tolerance_sour
         console.print("\n", mult_text)
 
 
-def _print_calculation_result(result: dict):
+def _print_calculation_result(result: dict, mult_cfg=None):
     """Print a comprehensive, user-friendly tax calculation result."""
-    from rich.console import Console
-    from rich.panel import Panel
-    from rich.text import Text
-    from rich.table import Table
-    
-    console = Console()
+    console, Panel, Text, Table = _create_console_with_imports()
     
     # Extract key information
     income_sg = result.get('income_sg', 0)
@@ -241,8 +269,7 @@ def _print_calculation_result(result: dict):
     calc_text.append(f"Marginal Tax Rate: {marginal_total:.2f}%", style="bold magenta")
     
     # Add FEUER warning if present
-    if feuer_warning:
-        calc_text.append(f"\n\n{feuer_warning}", style="yellow")
+    _print_feuer_warning_if_present(calc_text, feuer_warning)
     
     console.print(Panel(calc_text, title="TaxGlide Calculation", border_style="green"))
     
@@ -283,11 +310,9 @@ def _print_calculation_result(result: dict):
     
     console.print(Panel(details_text, title="Technical Analysis", border_style="blue"))
     
-    # Applied multipliers
-    if picks:
-        mult_text = Text()
-        mult_text.append(f"📎 Applied Multipliers: {', '.join(picks)}")
-        console.print("\n", mult_text)
+    # Applied multipliers - use shared function to fix the bug!
+    if picks and mult_cfg:
+        _print_multiplier_info(console, Text, picks, mult_cfg, sg_simple)
 
 
 def _resolve_incomes(
@@ -445,8 +470,8 @@ def calc(
     if json_out:
         print(json.dumps(res, indent=2))
     else:
-        # Clean, user-friendly output for terminal use
-        _print_calculation_result(res)
+        # Clean, user-friendly output for terminal use - pass mult_cfg to fix multiplier display bug
+        _print_calculation_result(res, mult_cfg)
 
 
 @app.command()
