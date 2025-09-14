@@ -117,9 +117,11 @@ class TestCliCalcCommand:
             "calc", "--year", "2025", "--income", "60000"
         ])
         assert result.exit_code == 0
-        assert "income_sg" in result.stdout
-        assert "income_fed" in result.stdout
-        assert "'income': 60000" in result.stdout
+        # Check for key elements in the new beautiful output
+        assert "TaxGlide Calculation" in result.stdout
+        assert "60,000 CHF" in result.stdout  # Income amount
+        assert "Total Tax:" in result.stdout
+        assert "Average Tax Rate:" in result.stdout
     
     def test_calc_with_separate_incomes(self):
         """Test calc command with separate income parameters."""
@@ -127,9 +129,11 @@ class TestCliCalcCommand:
             "calc", "--year", "2025", "--income-sg", "58000", "--income-fed", "60000"
         ])
         assert result.exit_code == 0
-        assert "'income_sg': 58000" in result.stdout
-        assert "'income_fed': 60000" in result.stdout
-        assert "'income': None" in result.stdout  # Legacy field should be None
+        # Check for key elements showing separate incomes in beautiful output
+        assert "TaxGlide Calculation" in result.stdout
+        assert "SG Income: 58,000 CHF" in result.stdout
+        assert "Federal Income: 60,000 CHF" in result.stdout
+        assert "Total Tax:" in result.stdout
     
     def test_calc_error_no_income(self):
         """Test calc command error when no income is provided."""
@@ -172,7 +176,11 @@ class TestCliOptimizeCommand:
             "optimize", "--year", "2025", "--income", "80000", "--max-deduction", "5000"
         ])
         assert result.exit_code == 0
-        assert "sweet_spot" in result.stdout
+        # Check for key elements in the new beautiful optimization output
+        assert "TaxGlide Optimization" in result.stdout
+        assert "OPTIMAL DEDUCTION RECOMMENDATION" in result.stdout
+        assert "Deduct:" in result.stdout
+        assert "Tax savings:" in result.stdout
     
     def test_optimize_with_separate_incomes(self):
         """Test optimize command with separate income parameters."""
@@ -182,7 +190,11 @@ class TestCliOptimizeCommand:
             "--max-deduction", "5000"
         ])
         assert result.exit_code == 0
-        assert "sweet_spot" in result.stdout
+        # Check for key elements in the new beautiful optimization output
+        assert "TaxGlide Optimization" in result.stdout
+        assert "OPTIMAL DEDUCTION RECOMMENDATION" in result.stdout
+        assert "Deduct:" in result.stdout
+        assert "Tax savings:" in result.stdout
     
     def test_optimize_error_no_income(self):
         """Test optimize command error when no income is provided.""" 

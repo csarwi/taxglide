@@ -181,6 +181,94 @@ def _print_optimization_result(result: dict, tolerance_bp: float, tolerance_sour
         console.print("\n", mult_text)
 
 
+def _print_calculation_result(result: dict):
+    """Print a comprehensive, user-friendly tax calculation result."""
+    from rich.console import Console
+    from rich.panel import Panel
+    from rich.text import Text
+    from rich.table import Table
+    
+    console = Console()
+    
+    # Extract key information
+    income_sg = result.get('income_sg', 0)
+    income_fed = result.get('income_fed', 0) 
+    income = result.get('income', 0)
+    federal_tax = result.get('federal', 0)
+    sg_simple = result.get('sg_simple', 0)
+    sg_after_mult = result.get('sg_after_mult', 0)
+    total_tax = result.get('total', 0)
+    avg_rate = result.get('avg_rate', 0) * 100  # Convert to percentage
+    marginal_total = result.get('marginal_total', 0) * 100  # Convert to percentage
+    filing_status = result.get('filing_status', 'single')
+    picks = result.get('picks', [])
+    feuer_warning = result.get('feuer_warning')
+    
+    # Main tax calculation panel
+    calc_text = Text()
+    calc_text.append("💰 TAX CALCULATION RESULTS\n\n", style="bold green")
+    
+    # Show income information
+    if income and income_sg == income_fed:
+        calc_text.append(f"Taxable Income: {income:,} CHF\n", style="bold cyan")
+    else:
+        calc_text.append(f"SG Income: {income_sg:,} CHF\n", style="cyan")
+        calc_text.append(f"Federal Income: {income_fed:,} CHF\n", style="cyan")
+    
+    calc_text.append(f"Total Tax: {total_tax:,.2f} CHF\n", style="bold red")
+    calc_text.append(f"Average Tax Rate: {avg_rate:.2f}%\n", style="bold yellow")
+    calc_text.append(f"Marginal Tax Rate: {marginal_total:.2f}%", style="bold magenta")
+    
+    # Add FEUER warning if present
+    if feuer_warning:
+        calc_text.append(f"\n\n{feuer_warning}", style="yellow")
+    
+    console.print(Panel(calc_text, title="TaxGlide Calculation", border_style="green"))
+    
+    # Detailed tax breakdown table
+    tax_table = Table(title="📊 Tax Component Breakdown", show_header=True, header_style="bold blue")
+    tax_table.add_column("Tax Component", style="cyan")
+    tax_table.add_column("Amount (CHF)", justify="right", style="green")
+    tax_table.add_column("Effective Rate", justify="right", style="yellow")
+    
+    # Calculate effective rates
+    base_income = max(income_sg, income_fed) if income_sg != income_fed else income
+    fed_rate = (federal_tax / base_income * 100) if base_income > 0 else 0
+    sg_simple_rate = (sg_simple / base_income * 100) if base_income > 0 else 0
+    sg_after_rate = (sg_after_mult / base_income * 100) if base_income > 0 else 0
+    
+    tax_table.add_row("Federal Tax", f"{federal_tax:,.2f}", f"{fed_rate:.2f}%")
+    tax_table.add_row("SG Simple Tax", f"{sg_simple:,.2f}", f"{sg_simple_rate:.2f}%")
+    tax_table.add_row("SG After Multipliers", f"{sg_after_mult:,.2f}", f"{sg_after_rate:.2f}%")
+    tax_table.add_row("[bold]Total Tax", f"[bold]{total_tax:,.2f}", f"[bold]{avg_rate:.2f}%")
+    
+    console.print("\n", tax_table)
+    
+    # Technical details panel
+    details_text = Text()
+    details_text.append("🎯 CALCULATION DETAILS\n\n", style="bold blue")
+    details_text.append(f"Filing Status: {filing_status.replace('_', ' ').title()}\n")
+    details_text.append(f"Marginal Rate (next CHF): {marginal_total:.2f}%\n")
+    
+    # Show federal marginal info if available
+    fed_marginal = result.get('marginal_federal_hundreds', 0) * 100
+    if fed_marginal > 0:
+        details_text.append(f"Federal Marginal Rate: {fed_marginal:.1f}%\n")
+    
+    # Calculate multiplier effect
+    if sg_simple > 0:
+        multiplier_effect = (sg_after_mult / sg_simple) - 1
+        details_text.append(f"Multiplier Effect: +{multiplier_effect:.1%} on SG simple tax")
+    
+    console.print(Panel(details_text, title="Technical Analysis", border_style="blue"))
+    
+    # Applied multipliers
+    if picks:
+        mult_text = Text()
+        mult_text.append(f"📎 Applied Multipliers: {', '.join(picks)}")
+        console.print("\n", mult_text)
+
+
 def _resolve_incomes(
     income: Optional[int] = None,
     income_sg: Optional[int] = None, 
@@ -336,7 +424,8 @@ def calc(
     if json_out:
         print(json.dumps(res, indent=2))
     else:
-        rprint(res)
+        # Clean, user-friendly output for terminal use
+        _print_calculation_result(res)
 
 
 @app.command()
