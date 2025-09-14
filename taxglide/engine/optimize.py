@@ -356,15 +356,16 @@ def optimize_deduction_adaptive(
     prefer_smallest_on_tie: bool = True,
     max_realistic_roi: float = 100.0,
     enable_adaptive_retry: bool = True,
-    min_income_for_retry: int = 50000,
-    min_utilization_threshold: float = 0.30,  # 30% utilization threshold
+    min_income_for_retry: int = 25000,  # Lower threshold - optimization issues can occur at any income level
+    min_utilization_threshold: float = 0.25,  # 25% minimum utilization threshold
+    target_utilization_range: tuple = (0.25, 0.45),  # Target 25-45% utilization for practical multi-year planning
 ) -> Dict[str, Any]:
     """
     Enhanced optimize_deduction with adaptive multi-tolerance retry.
     
-    When low utilization is detected (< 30% of max deduction used for incomes > 50K),
-    automatically retries with multiple tolerance settings and chooses the result
-    with the best ROI among reasonable options.
+    When suboptimal utilization is detected, automatically retries with multiple 
+    tolerance settings and chooses the result with the best balance of utilization 
+    (targeting 25-50% range) and ROI for practical multi-year tax planning.
     
     Args:
         income: Income amount
@@ -379,8 +380,9 @@ def optimize_deduction_adaptive(
         prefer_smallest_on_tie: Whether to prefer smaller deductions on ROI ties
         max_realistic_roi: Maximum realistic ROI percentage to accept
         enable_adaptive_retry: Whether to enable the adaptive retry mechanism
-        min_income_for_retry: Minimum income to trigger retry (CHF)
+        min_income_for_retry: Minimum income to trigger retry (CHF) - lowered from 50K to 25K
         min_utilization_threshold: Minimum utilization ratio to avoid retry
+        target_utilization_range: Target utilization range (min, max) for practical planning
         
     Returns:
         Optimization result with potential adaptive_retry_info
@@ -413,18 +415,34 @@ def optimize_deduction_adaptive(
     initial_deduction = initial_result["sweet_spot"]["deduction"]
     utilization_ratio = initial_deduction / max_deduction
     
-    # Only retry if utilization is below threshold
-    if utilization_ratio >= min_utilization_threshold:
+    # Only retry if utilization is outside practical range
+    target_min, target_max = target_utilization_range
+    utilization_cap = 0.50  # Never recommend >50% utilization for practical planning
+    
+    # If utilization is in target range (25-50%), don't retry
+    if target_min <= utilization_ratio <= target_max:
         return initial_result
     
-    # Define alternative tolerance strategies - focus on WIDER tolerances to improve utilization
-    retry_tolerances = [
-        initial_roi_tolerance_bp * 3.0,      # 3x more relaxed (better utilization)
-        initial_roi_tolerance_bp * 6.0,      # 6x more relaxed  
-        initial_roi_tolerance_bp * 10.0,     # 10x more relaxed
-        200.0,                               # Very relaxed
-        400.0,                               # Extremely relaxed
-    ]
+    # Always retry if utilization > 50% (too aggressive for multi-year planning)
+    # Also retry if utilization < 25% (too conservative)
+    
+    # Define alternative tolerance strategies based on utilization needs
+    if utilization_ratio > target_max:  # Need to reduce utilization
+        retry_tolerances = [
+            initial_roi_tolerance_bp * 0.7,     # Tighter (reduce utilization)
+            initial_roi_tolerance_bp * 0.5,     # Much tighter
+            initial_roi_tolerance_bp * 0.3,     # Very tight
+            5.0,                                 # Extremely tight
+            3.0,                                 # Ultra tight
+        ]
+    else:  # Need to increase utilization (< target_min)
+        retry_tolerances = [
+            initial_roi_tolerance_bp * 2.0,     # Wider (better utilization)
+            initial_roi_tolerance_bp * 4.0,     # Much wider
+            initial_roi_tolerance_bp * 8.0,     # Very wide
+            100.0,                               # Wide
+            200.0,                               # Very wide
+        ]
     
     retry_results = []
     best_roi_result = initial_result
@@ -472,29 +490,54 @@ def optimize_deduction_adaptive(
                 current_best_utilization = best_roi_result["sweet_spot"]["deduction"] / max_deduction
                 current_best_savings = best_roi_result["sweet_spot"]["tax_saved_absolute"]
                 
-                # Strongly favor significant improvements in absolute savings even with modest ROI loss
-                if retry_savings > current_best_savings * 2.0 and roi_difference > -3.0:
-                    # 2x+ savings with ROI loss < 3% - prioritize practical benefit
+                # Priority 1: STRONGLY favor results in target utilization range (25-50%)
+                target_min, target_max = target_utilization_range
+                current_in_target = target_min <= current_best_utilization <= target_max
+                retry_in_target = target_min <= retry_utilization <= target_max
+                
+                if not current_in_target and retry_in_target:
+                    # Always prefer target range, even with significant ROI loss
                     should_use_retry = True
-                elif retry_savings > current_best_savings * 5.0 and roi_difference > -5.0:
-                    # 5x+ savings with ROI loss < 5% - strongly prioritize practical benefit
+                elif current_best_utilization > target_max and retry_utilization < current_best_utilization and roi_difference > -10.0:
+                    # If current is too high, prefer any reduction in utilization (accept larger ROI loss)
                     should_use_retry = True
-                elif retry_utilization > current_best_utilization * 2.0 and roi_difference > -2.0:
-                    # 2x+ better utilization with ROI loss < 2% - favor utilization
+                elif current_best_utilization > 0.60 and retry_utilization < 0.60 and roi_difference > -5.0:
+                    # If utilization > 60%, strongly prefer getting below 60%
                     should_use_retry = True
-                elif roi_difference > 0.5:  # Only prefer pure ROI if significantly better (>0.5%)
+                elif current_best_utilization < target_min and retry_utilization > current_best_utilization and roi_difference > -3.0:
+                    # If current is too low, prefer increases with reasonable ROI
+                    should_use_retry = True
+                # Priority 2: Strongly favor significant improvements in absolute savings with modest ROI loss
+                elif retry_savings > current_best_savings * 3.0 and roi_difference > -2.0:
+                    # 3x+ savings with ROI loss < 2% - strongly prioritize practical benefit
+                    should_use_retry = True
+                elif retry_savings > current_best_savings * 5.0 and roi_difference > -4.0:
+                    # 5x+ savings with ROI loss < 4% - very strongly prioritize practical benefit
+                    should_use_retry = True
+                # Priority 3: Better utilization with reasonable ROI
+                elif retry_utilization > current_best_utilization * 2.0 and roi_difference > -1.5:
+                    # 2x+ better utilization with ROI loss < 1.5% - favor utilization
+                    should_use_retry = True
+                # Priority 4: Only prefer pure ROI if significantly better
+                elif roi_difference > 1.0:  # Only prefer pure ROI if significantly better (>1.0%)
                     should_use_retry = True
                 
                 if should_use_retry:
                     best_roi_value = retry_roi
                     best_roi_result = retry_result
                     
-                    # Determine selection reason
-                    if retry_savings > current_best_savings * 2.0:
+                    # Determine selection reason based on priority triggers
+                    if not current_in_target and retry_in_target:
+                        reason = "reached_target_utilization_range"
+                    elif current_best_utilization < target_min and retry_utilization > current_best_utilization * 1.5:
+                        reason = "improved_toward_target_range"
+                    elif current_best_utilization > target_max and retry_in_target:
+                        reason = "reduced_to_target_range"
+                    elif retry_savings > current_best_savings * 3.0:
                         reason = "much_better_savings"
                     elif retry_utilization > current_best_utilization * 2.0:
                         reason = "much_better_utilization"
-                    elif roi_difference > 0.5:
+                    elif roi_difference > 1.0:
                         reason = "significantly_higher_roi"
                     else:
                         reason = "balanced_improvement"

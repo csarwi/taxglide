@@ -86,17 +86,19 @@ def _validate_filing_status(value: str) -> str:
 def _get_adaptive_tolerance_bp(income: int) -> float:
     """Return income-adaptive tolerance in basis points.
     
-    Lower incomes have steeper ROI curves and benefit from precise optimization.
-    Higher incomes have flatter ROI curves and need broader tolerance to find the true optimum.
+    Very conservative tolerances to target 25-40% average utilization for practical
+    multi-year tax planning. Prevents ROI plateaus from spanning entire deduction space.
     """
-    if income < 50000:
-        return 10.0  # 0.1% - precise for steep curves
+    if income < 25000:
+        return 8.0    # 0.08% - very precise for low incomes
+    elif income < 50000:
+        return 12.0   # 0.12% - conservative for mid-income (addresses 34K issue) 
     elif income < 80000:
-        return 25.0  # 0.25% - moderate tolerance
-    elif income < 120000:
-        return 50.0  # 0.5% - broader for flatter curves
+        return 15.0   # 0.15% - still conservative for higher mid-income
+    elif income < 150000:
+        return 18.0   # 0.18% - conservative for high income
     else:
-        return 100.0  # 1.0% - wide tolerance for very flat curves
+        return 20.0   # 0.20% - prevent excessive utilization
 
 
 def _print_optimization_result(result: dict, tolerance_bp: float, tolerance_source: str, base_income: int, max_deduction: int = None):
@@ -126,6 +128,11 @@ def _print_optimization_result(result: dict, tolerance_bp: float, tolerance_sour
     multipliers = sweet_spot.get("multipliers", {})
     feuer_warning = multipliers.get("feuer_warning")
     _print_feuer_warning_if_present(result_text, feuer_warning)
+    
+    # Add utilization warning if present
+    utilization_warning = sweet_spot.get("utilization_warning")
+    if utilization_warning:
+        result_text.append(f"\n\n{utilization_warning['message']}", style="yellow")
     
     console.print(Panel(result_text, title="TaxGlide Optimization", border_style="green"))
     
@@ -618,6 +625,32 @@ def optimize(
             sg_simple_at_spot = simple_tax_sg_with_filing_status(current_sg, sg_cfg, filing_status)
             potential_feuer_tax = float(sg_simple_at_spot * Decimal(str(feuer_item.rate)))
             sweet_spot["multipliers"]["feuer_warning"] = f"⚠️ Missing FEUER tax: +{potential_feuer_tax:.0f} CHF (add --pick FEUER)"
+        
+        # Add utilization warnings based on technical ROI plateau vs deduction space analysis
+        utilization_ratio = deduction / max_deduction
+        roi = (sweet_spot["tax_saved_absolute"] / deduction * 100) if deduction > 0 else 0
+        
+        if utilization_ratio > 0.70:  # High utilization (>70%)
+            sweet_spot["utilization_warning"] = {
+                "type": "high_utilization",
+                "utilization_percent": utilization_ratio * 100,
+                "message": f"⚠️ High utilization ({utilization_ratio:.1%}): The ROI plateau from tax bracket transitions "
+                          f"spans most of your {max_deduction:,} CHF deduction space. This happens when the natural "
+                          f"width of tax optimization opportunities matches your available deduction limit. "
+                          f"Try '--tolerance-bp {tolerance_bp * 0.5:.0f}' to find a smaller deduction within the plateau.",
+                "technical_note": "Tax bracket ROI plateaus have natural widths (~5-8K CHF) independent of your deduction limit."
+            }
+        elif utilization_ratio < 0.10:  # Very low utilization (<10%)
+            sweet_spot["utilization_warning"] = {
+                "type": "low_utilization",
+                "utilization_percent": utilization_ratio * 100,
+                "roi_percent": roi,
+                "message": f"⚠️ Low utilization ({utilization_ratio:.1%}): The algorithm found a narrow ROI peak at "
+                          f"{deduction:,} CHF, but you have {max_deduction:,} CHF available. This happens when tax bracket "
+                          f"transitions create sharp optimization points that are much smaller than your deduction space. "
+                          f"Try '--tolerance-bp {tolerance_bp * 2:.0f}' to explore larger deductions with potentially better absolute savings.",
+                "technical_note": "Small ROI peaks often indicate bracket boundary effects - larger deductions may provide more total savings."
+            }
         
         if sg_income == fed_income:
             # Legacy single income case - keep simple output

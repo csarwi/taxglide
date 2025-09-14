@@ -31,3 +31,6 @@ include = ["taxglide*"]
 
 [tool.pytest.ini_options]
 addopts = "-q"
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+]
