@@ -43,7 +43,8 @@ The build is centrally configured in `build_executable.ps1` with the following o
 - **Data file inclusion**: Embeds the `configs` directory
 
 ### Build Artifacts
-- **Output**: `dist/taxglide.exe` (~33.4 MB)
+- **Output**: `dist/taxglide.exe` (~31.9 MB)
+- **Release Package**: `releases/taxglide-vX.Y.Z.zip` (auto-created)
 - **Temporary files**: Automatically cleaned up
 - **Build cache**: Reused for faster subsequent builds
 
@@ -60,6 +61,12 @@ $BuildConfig = @{
     IncludeDataDirs = @("configs")   # Data directories to embed
     PythonPath = ".\.venv\Scripts\python.exe"
     CleanBuild = $true               # Clean previous builds
+    
+    # Release packaging settings
+    CreateRelease = $true            # Create versioned release package
+    ReleaseDir = "releases"          # Release output directory
+    ProjectTomlPath = "pyproject.toml" # File to extract version from
+    ReleaseFiles = @("configs")      # Additional files for release
 }
 ```
 
@@ -84,7 +91,7 @@ Remove-Item -Recurse -Force *.build
 ```
 
 ### Large File Size
-Current size (~33.4 MB) includes:
+Current size (~31.9 MB) includes:
 - Python runtime
 - All dependencies (typer, rich, pydantic, matplotlib, etc.)
 - Configuration files
@@ -103,21 +110,45 @@ For smaller size, consider:
 
 ## Distribution
 
-The resulting `dist/taxglide.exe` is:
+The build process creates two distribution formats:
+
+### Individual Executable
+`dist/taxglide.exe` is:
 - ✅ Fully portable (no Python installation required)
 - ✅ Self-contained (all dependencies included)
 - ✅ Configuration-embedded (configs directory included)
 - ✅ Windows compatible (tested on Windows 10+)
 
-Simply copy `taxglide.exe` to any Windows machine and run it directly.
+### Release Package (Automatic)
+`releases/taxglide-vX.Y.Z.zip` contains:
+- ✅ `taxglide.exe` - Main executable
+- ✅ `configs/` - External configuration files
+- ✅ `README.txt` - Usage instructions and build info
+- ✅ Versioned filename based on `pyproject.toml`
+
+Both formats work independently. The release package is ideal for distribution to end users.
 
 ## Files Created by Build Process
 
+### Source Files
 - `main.py` - Entry point for Nuitka compilation
 - `build_executable.ps1` - Main build script with centralized configuration
 - `build.bat` - Simple wrapper for easier execution
-- `dist/taxglide.exe` - Final executable (~33.4 MB)
 - `BUILD.md` - This documentation file
+
+### Build Output
+- `dist/taxglide.exe` - Final executable (~31.9 MB)
+- `releases/taxglide-vX.Y.Z/` - Versioned release directory
+  - `taxglide.exe` - Executable copy
+  - `configs/` - Configuration files
+  - `README.txt` - Release documentation
+- `releases/taxglide-vX.Y.Z.zip` - Distribution package
+
+### Version Detection
+Version is automatically extracted from `pyproject.toml` and used for:
+- Release directory naming: `taxglide-v0.1.0/`
+- ZIP file naming: `taxglide-v0.1.0.zip`
+- README generation with build timestamp
 
 ## Centralized Path Management
 

@@ -19,6 +19,12 @@ $BuildConfig = @{
     
     # Build cleanup
     CleanBuild = $true
+    
+    # Release packaging settings
+    CreateRelease = $true
+    ReleaseDir = "releases"
+    ProjectTomlPath = "pyproject.toml"
+    ReleaseFiles = @("configs")  # Additional files/folders to include in release
 }
 
 # Function to build paths consistently
@@ -33,6 +39,140 @@ function Ensure-Directory {
     if (-not (Test-Path $Path)) {
         New-Item -ItemType Directory -Path $Path -Force | Out-Null
         Write-Host "Created directory: $Path" -ForegroundColor Green
+    }
+}
+
+# Function to extract version from pyproject.toml
+function Get-ProjectVersion {
+    param([string]$TomlPath)
+    if (-not (Test-Path $TomlPath)) {
+        Write-Host "Warning: $TomlPath not found, using default version 0.1.0" -ForegroundColor Yellow
+        return "0.1.0"
+    }
+    
+    try {
+        $Content = Get-Content $TomlPath -Raw
+        if ($Content -match 'version\s*=\s*"([^"]+)"') {
+            return $Matches[1]
+        } elseif ($Content -match "version\s*=\s*'([^']+)'") {
+            return $Matches[1]
+        } else {
+            Write-Host "Warning: Could not parse version from $TomlPath, using default 0.1.0" -ForegroundColor Yellow
+            return "0.1.0"
+        }
+    } catch {
+        Write-Host "Error reading $TomlPath : $($_.Exception.Message)" -ForegroundColor Red
+        return "0.1.0"
+    }
+}
+
+# Function to create release package
+function Create-ReleasePackage {
+    param(
+        [string]$ExecutablePath,
+        [string]$Version,
+        [string]$ReleaseDir,
+        [array]$AdditionalFiles
+    )
+    
+    Write-Host "=== Creating Release Package ===" -ForegroundColor Cyan
+    
+    # Create release directory structure
+    $ReleaseBasePath = Get-BuildPath $ReleaseDir
+    $VersionedReleasePath = Join-Path $ReleaseBasePath "taxglide-v$Version"
+    $ZipFileName = "taxglide-v$Version.zip"
+    $ZipPath = Join-Path $ReleaseBasePath $ZipFileName
+    
+    Ensure-Directory $ReleaseBasePath
+    Ensure-Directory $VersionedReleasePath
+    
+    # Clean up previous release of same version
+    if (Test-Path $VersionedReleasePath) {
+        Remove-Item $VersionedReleasePath -Recurse -Force
+        Write-Host "Cleaned previous release: $VersionedReleasePath" -ForegroundColor Green
+    }
+    if (Test-Path $ZipPath) {
+        Remove-Item $ZipPath -Force
+        Write-Host "Removed previous zip: $ZipPath" -ForegroundColor Green
+    }
+    
+    # Create fresh release directory
+    New-Item -ItemType Directory -Path $VersionedReleasePath -Force | Out-Null
+    
+    # Copy executable
+    if (Test-Path $ExecutablePath) {
+        Copy-Item $ExecutablePath $VersionedReleasePath
+        Write-Host "Copied executable: $(Split-Path $ExecutablePath -Leaf)" -ForegroundColor Green
+    } else {
+        throw "Executable not found: $ExecutablePath"
+    }
+    
+    # Copy additional files/directories
+    foreach ($item in $AdditionalFiles) {
+        $sourcePath = Get-BuildPath $item
+        if (Test-Path $sourcePath) {
+            $destPath = Join-Path $VersionedReleasePath $item
+            if (Test-Path $sourcePath -PathType Container) {
+                # Copy directory
+                Copy-Item $sourcePath $destPath -Recurse -Force
+                Write-Host "Copied directory: $item" -ForegroundColor Green
+            } else {
+                # Copy file
+                Copy-Item $sourcePath $destPath -Force
+                Write-Host "Copied file: $item" -ForegroundColor Green
+            }
+        } else {
+            Write-Host "Warning: Release file not found: $sourcePath" -ForegroundColor Yellow
+        }
+    }
+    
+    # Create README for the release
+    $ReadmeContent = @"
+TaxGlide v$Version - Portable Release
+====================================
+
+This is a portable release of TaxGlide, a Swiss tax calculator CLI.
+
+Files included:
+- taxglide.exe: Main executable (no Python installation required)
+- configs/: Tax configuration files for different years
+
+Usage:
+  taxglide.exe --help                     # Show available commands
+  taxglide.exe calc --year 2025 --income 100000  # Calculate taxes
+  taxglide.exe validate --year 2025       # Validate configurations
+
+For more information, visit: https://github.com/csarwi/taxglide
+
+Built on: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')
+Platform: Windows x64
+"@
+    
+    $ReadmePath = Join-Path $VersionedReleasePath "README.txt"
+    Set-Content -Path $ReadmePath -Value $ReadmeContent -Encoding UTF8
+    Write-Host "Created README.txt" -ForegroundColor Green
+    
+    # Create ZIP archive
+    try {
+        Add-Type -AssemblyName System.IO.Compression.FileSystem
+        [System.IO.Compression.ZipFile]::CreateFromDirectory($VersionedReleasePath, $ZipPath)
+        
+        $ZipSize = (Get-Item $ZipPath).Length / 1MB
+        Write-Host "=== RELEASE PACKAGE CREATED ===" -ForegroundColor Green
+        Write-Host "Release directory: $VersionedReleasePath" -ForegroundColor Green
+        Write-Host "Release ZIP: $ZipPath" -ForegroundColor Green
+        Write-Host "ZIP size: $([math]::Round($ZipSize, 2)) MB" -ForegroundColor Green
+        
+        return @{
+            "success" = $true
+            "version" = $Version
+            "zip_path" = $ZipPath
+            "release_dir" = $VersionedReleasePath
+            "zip_size_mb" = [math]::Round($ZipSize, 2)
+        }
+    } catch {
+        Write-Host "Error creating ZIP archive: $($_.Exception.Message)" -ForegroundColor Red
+        return @{"success" = $false; "error" = $_.Exception.Message}
     }
 }
 
@@ -132,19 +272,37 @@ function Build-TaxGlide {
                 Write-Host "Testing executable..." -ForegroundColor Yellow
                 & $FinalExe --help
                 
+                # Create release package if configured
+                if ($BuildConfig.CreateRelease) {
+                    Write-Host "" 
+                    try {
+                        $Version = Get-ProjectVersion $BuildConfig.ProjectTomlPath
+                        Write-Host "Detected version: $Version" -ForegroundColor Green
+                        
+                        $ReleaseResult = Create-ReleasePackage -ExecutablePath $FinalExe -Version $Version -ReleaseDir $BuildConfig.ReleaseDir -AdditionalFiles $BuildConfig.ReleaseFiles
+                        
+                        if ($ReleaseResult.success) {
+                            Write-Host "" 
+                            Write-Host "=== RELEASE SUMMARY ===" -ForegroundColor Green
+                            Write-Host "Version: $($ReleaseResult.version)" -ForegroundColor White
+                            Write-Host "Release ZIP: $($ReleaseResult.zip_path)" -ForegroundColor White
+                            Write-Host "ZIP Size: $($ReleaseResult.zip_size_mb) MB" -ForegroundColor White
+                            Write-Host "Release ready for distribution!" -ForegroundColor Green
+                        } else {
+                            Write-Host "Warning: Release packaging failed: $($ReleaseResult.error)" -ForegroundColor Yellow
+                        }
+                    } catch {
+                        Write-Host "Warning: Release packaging failed: $($_.Exception.Message)" -ForegroundColor Yellow
+                    }
+                }
+                
                 return $true
-            } else {
-                Write-Host "=== BUILD FAILED ===" -ForegroundColor Red
-                Write-Host "Executable not found at expected location: $FinalExe" -ForegroundColor Red
-                return $false
-            }
         } else {
             Write-Host "=== BUILD FAILED ===" -ForegroundColor Red
-            Write-Host "Nuitka process exited with code: $($Process.ExitCode)" -ForegroundColor Red
+            Write-Host "Executable not found at expected location: $FinalExe" -ForegroundColor Red
             return $false
         }
-    }
-    catch {
+    } catch {
         Write-Host "=== BUILD ERROR ===" -ForegroundColor Red
         Write-Host "Error during build: $($_.Exception.Message)" -ForegroundColor Red
         return $false
@@ -155,8 +313,19 @@ function Build-TaxGlide {
 function Show-BuildConfig {
     Write-Host "=== Build Configuration ===" -ForegroundColor Cyan
     $BuildConfig.GetEnumerator() | Sort-Object Name | ForEach-Object {
-        Write-Host "$($_.Key): $($_.Value)" -ForegroundColor White
+        if ($_.Value -is [array]) {
+            Write-Host "$($_.Key): $($_.Value -join ', ')" -ForegroundColor White
+        } else {
+            Write-Host "$($_.Key): $($_.Value)" -ForegroundColor White
+        }
     }
+    
+    # Show detected version
+    if ($BuildConfig.CreateRelease) {
+        $DetectedVersion = Get-ProjectVersion $BuildConfig.ProjectTomlPath
+        Write-Host "Detected Version: $DetectedVersion" -ForegroundColor Cyan
+    }
+    
     Write-Host ""
 }
 

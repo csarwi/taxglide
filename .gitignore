@@ -183,4 +183,7 @@ pyrightconfig.json
 *.onefile-build/
 nuitka-crash-report.xml
 
+# Release packages - build artifacts should not be committed
+releases/
+
 # End of https://www.toptal.com/developers/gitignore/api/python
