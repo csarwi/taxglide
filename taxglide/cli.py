@@ -41,6 +41,54 @@ def _get_adaptive_tolerance_bp(income: int) -> float:
         return 100.0  # 1.0% - wide tolerance for very flat curves
 
 
+def _print_optimization_result(result: dict, tolerance_bp: float, tolerance_source: str, base_income: int):
+    """Print a clean, user-friendly optimization result."""
+    from rich.console import Console
+    from rich.panel import Panel
+    from rich.text import Text
+    
+    console = Console()
+    
+    sweet_spot = result.get("sweet_spot")
+    if not sweet_spot:
+        console.print("❌ No optimization result found", style="red")
+        return
+    
+    # Core recommendation
+    deduction = sweet_spot["deduction"]
+    tax_saved = sweet_spot["tax_saved_absolute"]
+    roi = sweet_spot["optimization_summary"]["roi_percent"]
+    new_income = sweet_spot["new_income"]
+    
+    # Create main result panel
+    result_text = Text()
+    result_text.append("💰 OPTIMAL DEDUCTION RECOMMENDATION\n\n", style="bold green")
+    result_text.append(f"Deduct: {deduction:,} CHF\n", style="bold cyan")
+    result_text.append(f"Tax savings: {tax_saved:,.0f} CHF\n", style="bold yellow")
+    result_text.append(f"Return on investment: {roi:.1f}%\n", style="bold magenta")
+    result_text.append(f"New taxable income: {new_income:,.0f} CHF", style="dim")
+    
+    # Add FEUER warning if present
+    multipliers = sweet_spot.get("multipliers", {})
+    feuer_warning = multipliers.get("feuer_warning")
+    if feuer_warning:
+        result_text.append(f"\n\n{feuer_warning}", style="yellow")
+    
+    console.print(Panel(result_text, title="TaxGlide Optimization", border_style="green"))
+    
+    # Show adaptive retry info if it was used
+    adaptive_info = result.get("adaptive_retry_used")
+    if adaptive_info:
+        console.print(f"\n🔄 Enhanced with adaptive optimization (retried with {adaptive_info['chosen_tolerance_bp']:.0f}bp tolerance)", 
+                     style="dim blue")
+    
+    # Concise technical details (optional)
+    opt_summary = sweet_spot.get("optimization_summary", {})
+    if opt_summary.get("plateau_width_chf"):
+        console.print(f"\n📊 Technical: {opt_summary['plateau_width_chf']:,} CHF ROI plateau, "
+                     f"{tolerance_bp:.0f}bp tolerance ({tolerance_source})", style="dim")
+
+
 def _resolve_incomes(
     income: Optional[int] = None,
     income_sg: Optional[int] = None, 
@@ -382,38 +430,21 @@ def optimize(
     
     out = {k: coerce(v) for k, v in out.items()}
     
-    # Add tolerance explanation
-    tolerance_explanation = {
-        "tolerance_used_bp": tolerance_bp,
-        "tolerance_percent": tolerance_bp / 100.0,
-        "tolerance_source": tolerance_source,
-        "explanation": f"Tolerance {tolerance_bp:.1f} basis points ({tolerance_bp/100:.2f}%) {tolerance_source} based on income {base_income:,} CHF. "
-                      f"This sets how close to the maximum ROI a deduction must be to be considered 'near-optimal'. "
-                      f"Higher incomes use wider tolerances because ROI curves are flatter at higher tax brackets."
-    }
-    
     if json_out:
-        # Include tolerance info in JSON output
+        # Full detailed JSON output for programmatic use
+        tolerance_explanation = {
+            "tolerance_used_bp": tolerance_bp,
+            "tolerance_percent": tolerance_bp / 100.0,
+            "tolerance_source": tolerance_source,
+            "explanation": f"Tolerance {tolerance_bp:.1f} basis points ({tolerance_bp/100:.2f}%) {tolerance_source} based on income {base_income:,} CHF. "
+                          f"This sets how close to the maximum ROI a deduction must be to be considered 'near-optimal'. "
+                          f"Higher incomes use wider tolerances because ROI curves are flatter at higher tax brackets."
+        }
         out["tolerance_info"] = tolerance_explanation
         print(json.dumps(out, indent=2))
     else:
-        rprint(out)
-        
-        # Add adaptive retry notification if used
-        if out.get("adaptive_retry_used"):
-            retry_info = out["adaptive_retry_used"]
-            print(f"\n🔄 Adaptive Optimization Applied:")
-            print(f"   Low utilization detected, retried with tolerance {retry_info['chosen_tolerance_bp']:.1f}bp")
-            print(f"   ROI improvement: +{retry_info['roi_improvement']:.1f}%, "
-                  f"utilization improvement: +{retry_info['utilization_improvement']:.1%}")
-            print(f"   Use --disable-adaptive to use only initial tolerance.")
-        
-        # Add tolerance note after main output
-        print(f"\n💡 Tolerance: {tolerance_bp:.1f} basis points ({tolerance_bp/100:.2f}%) {tolerance_source} for income {base_income:,} CHF")
-        print(f"   This determines how close to maximum ROI a deduction must be to be considered optimal.")
-        if tolerance_source == "auto-selected":
-            print(f"   Higher incomes automatically use wider tolerances due to flatter ROI curves.")
-        print(f"   Use --tolerance-bp to override (e.g., --tolerance-bp 25 for tighter precision).")
+        # Clean, user-friendly output for terminal use
+        _print_optimization_result(out, tolerance_bp, tolerance_source, base_income)
 
 
 @app.command()

@@ -410,13 +410,13 @@ def optimize_deduction_adaptive(
     if utilization_ratio >= min_utilization_threshold:
         return initial_result
     
-    # Define alternative tolerance strategies
+    # Define alternative tolerance strategies - focus on WIDER tolerances to improve utilization
     retry_tolerances = [
-        initial_roi_tolerance_bp * 3.0,      # 3x more relaxed (e.g., 30bp)
-        initial_roi_tolerance_bp * 0.3,      # Much stricter (e.g., 3bp)
-        initial_roi_tolerance_bp * 8.0,      # Very relaxed (e.g., 80bp)
-        initial_roi_tolerance_bp * 0.1,      # Very strict (e.g., 1bp)
-        200.0,                               # Extremely relaxed
+        initial_roi_tolerance_bp * 3.0,      # 3x more relaxed (better utilization)
+        initial_roi_tolerance_bp * 6.0,      # 6x more relaxed  
+        initial_roi_tolerance_bp * 10.0,     # 10x more relaxed
+        200.0,                               # Very relaxed
+        400.0,                               # Extremely relaxed
     ]
     
     retry_results = []
@@ -459,28 +459,45 @@ def optimize_deduction_adaptive(
                 }
                 retry_results.append(retry_info)
                 
-                # Enhanced selection: prefer higher ROI, but consider absolute savings if ROI is similar
+                # Enhanced selection: prioritize practical utilization over tiny ROI improvements
                 should_use_retry = False
                 roi_difference = retry_roi - best_roi_value
+                current_best_utilization = best_roi_result["sweet_spot"]["deduction"] / max_deduction
+                current_best_savings = best_roi_result["sweet_spot"]["tax_saved_absolute"]
                 
-                if roi_difference > 0.1:  # More than 0.1% better ROI
+                # Strongly favor significant improvements in absolute savings even with modest ROI loss
+                if retry_savings > current_best_savings * 2.0 and roi_difference > -3.0:
+                    # 2x+ savings with ROI loss < 3% - prioritize practical benefit
                     should_use_retry = True
-                elif roi_difference > -0.5 and retry_savings > best_roi_result["sweet_spot"]["tax_saved_absolute"] * 1.5:
-                    # ROI within 0.5% and savings are 50% higher - favor absolute savings
+                elif retry_savings > current_best_savings * 5.0 and roi_difference > -5.0:
+                    # 5x+ savings with ROI loss < 5% - strongly prioritize practical benefit
                     should_use_retry = True
-                elif roi_difference > -1.0 and retry_savings > best_roi_result["sweet_spot"]["tax_saved_absolute"] * 2.0:
-                    # ROI within 1.0% and savings are 100% higher - strongly favor absolute savings
+                elif retry_utilization > current_best_utilization * 2.0 and roi_difference > -2.0:
+                    # 2x+ better utilization with ROI loss < 2% - favor utilization
+                    should_use_retry = True
+                elif roi_difference > 0.5:  # Only prefer pure ROI if significantly better (>0.5%)
                     should_use_retry = True
                 
                 if should_use_retry:
                     best_roi_value = retry_roi
                     best_roi_result = retry_result
+                    
+                    # Determine selection reason
+                    if retry_savings > current_best_savings * 2.0:
+                        reason = "much_better_savings"
+                    elif retry_utilization > current_best_utilization * 2.0:
+                        reason = "much_better_utilization"
+                    elif roi_difference > 0.5:
+                        reason = "significantly_higher_roi"
+                    else:
+                        reason = "balanced_improvement"
+                    
                     best_roi_result["adaptive_retry_used"] = {
                         "original_tolerance_bp": initial_roi_tolerance_bp,
                         "chosen_tolerance_bp": tolerance_bp,
                         "roi_improvement": retry_roi - initial_roi,
                         "utilization_improvement": retry_utilization - utilization_ratio,
-                        "selection_reason": "higher_roi" if roi_difference > 0.1 else "better_absolute_savings",
+                        "selection_reason": reason,
                     }
         
         except Exception:
