@@ -17,7 +17,7 @@ from .engine.federal import (
 )
 from .engine.multipliers import apply_multipliers, MultPick
 from .engine.models import chf, FilingStatus
-from .engine.optimize import optimize_deduction, validate_optimization_inputs
+from .engine.optimize import optimize_deduction, optimize_deduction_adaptive, validate_optimization_inputs
 from .viz.curve import plot_curve
 
 app = typer.Typer(help="Swiss tax CLI (SG + Federal), config driven")
@@ -212,12 +212,17 @@ def optimize(
     json_out: bool = typer.Option(False, "--json"),
     tolerance_bp: Optional[float] = typer.Option(None, help="Near-max ROI tolerance in basis points (auto-selected by income if not specified)"),
     filing_status: str = typer.Option("single", help="Filing status: single or married_joint"),
+    disable_adaptive: bool = typer.Option(False, "--disable-adaptive", help="Disable adaptive multi-tolerance retry for low utilization"),
 ):
-    """Find optimal deduction amounts.
+    """Find optimal deduction amounts with adaptive multi-tolerance optimization.
     
     Use either:
       --income 80000                           (same income for both SG and Federal)
       --income-sg 78000 --income-fed 80000     (different incomes due to different deductions)
+    
+    The optimizer automatically retries with different tolerance settings if low deduction
+    utilization is detected (< 30% for incomes > 50K CHF), choosing the best ROI result.
+    Use --disable-adaptive to use only the initial tolerance setting.
     
     Note: Optimization assumes the deduction applies equally to both SG and Federal incomes.
     """
@@ -279,14 +284,26 @@ def optimize(
             "sg_bracket": sg_bracket_info(current_sg, sg_cfg),
         }
 
-    out = optimize_deduction(
-        Decimal(base_income),  # Use higher income as baseline for optimization
-        max_deduction,
-        step,
-        calc_fn,
-        context_fn=context_fn,
-        roi_tolerance_bp=tolerance_bp,
-    )
+    # Use adaptive optimization by default, unless disabled
+    if disable_adaptive:
+        out = optimize_deduction(
+            Decimal(base_income),  # Use higher income as baseline for optimization
+            max_deduction,
+            step,
+            calc_fn,
+            context_fn=context_fn,
+            roi_tolerance_bp=tolerance_bp,
+        )
+    else:
+        out = optimize_deduction_adaptive(
+            Decimal(base_income),  # Use higher income as baseline for optimization
+            max_deduction,
+            step,
+            calc_fn,
+            context_fn=context_fn,
+            initial_roi_tolerance_bp=tolerance_bp,
+            enable_adaptive_retry=True,
+        )
 
     # Enhance output with separate income information if applicable
     if out.get("sweet_spot") is not None:
@@ -381,6 +398,16 @@ def optimize(
         print(json.dumps(out, indent=2))
     else:
         rprint(out)
+        
+        # Add adaptive retry notification if used
+        if out.get("adaptive_retry_used"):
+            retry_info = out["adaptive_retry_used"]
+            print(f"\n🔄 Adaptive Optimization Applied:")
+            print(f"   Low utilization detected, retried with tolerance {retry_info['chosen_tolerance_bp']:.1f}bp")
+            print(f"   ROI improvement: +{retry_info['roi_improvement']:.1f}%, "
+                  f"utilization improvement: +{retry_info['utilization_improvement']:.1%}")
+            print(f"   Use --disable-adaptive to use only initial tolerance.")
+        
         # Add tolerance note after main output
         print(f"\n💡 Tolerance: {tolerance_bp:.1f} basis points ({tolerance_bp/100:.2f}%) {tolerance_source} for income {base_income:,} CHF")
         print(f"   This determines how close to maximum ROI a deduction must be to be considered optimal.")

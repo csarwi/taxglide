@@ -333,3 +333,173 @@ def optimize_deduction(
         "local_marginal_percent_at_spot": local_marginal_percent_at_spot,
         #"federal_100_nudge": nudge_diag,
     }
+
+
+def optimize_deduction_adaptive(
+    income: Number,
+    max_deduction: int,
+    step: int,
+    calc_fn: Callable[[Number], Dict[str, Any]],
+    *,
+    context_fn: Optional[Callable[[Number], Dict[str, Any]]] = None,
+    fine_window: int = 300,
+    fine_step: int = 100,
+    min_deduction: int = 100,
+    initial_roi_tolerance_bp: float = 10.0,
+    prefer_smallest_on_tie: bool = True,
+    max_realistic_roi: float = 100.0,
+    enable_adaptive_retry: bool = True,
+    min_income_for_retry: int = 50000,
+    min_utilization_threshold: float = 0.30,  # 30% utilization threshold
+) -> Dict[str, Any]:
+    """
+    Enhanced optimize_deduction with adaptive multi-tolerance retry.
+    
+    When low utilization is detected (< 30% of max deduction used for incomes > 50K),
+    automatically retries with multiple tolerance settings and chooses the result
+    with the best ROI among reasonable options.
+    
+    Args:
+        income: Income amount
+        max_deduction: Maximum deduction allowed
+        step: Optimization step size
+        calc_fn: Tax calculation function
+        context_fn: Optional context function for bracket information
+        fine_window: Fine scan window around best result
+        fine_step: Fine scan step size
+        min_deduction: Minimum deduction to consider
+        initial_roi_tolerance_bp: Initial ROI tolerance in basis points
+        prefer_smallest_on_tie: Whether to prefer smaller deductions on ROI ties
+        max_realistic_roi: Maximum realistic ROI percentage to accept
+        enable_adaptive_retry: Whether to enable the adaptive retry mechanism
+        min_income_for_retry: Minimum income to trigger retry (CHF)
+        min_utilization_threshold: Minimum utilization ratio to avoid retry
+        
+    Returns:
+        Optimization result with potential adaptive_retry_info
+    """
+    # Run initial optimization with standard tolerance
+    initial_result = optimize_deduction(
+        income=income,
+        max_deduction=max_deduction,
+        step=step,
+        calc_fn=calc_fn,
+        context_fn=context_fn,
+        fine_window=fine_window,
+        fine_step=fine_step,
+        min_deduction=min_deduction,
+        roi_tolerance_bp=initial_roi_tolerance_bp,
+        prefer_smallest_on_tie=prefer_smallest_on_tie,
+        max_realistic_roi=max_realistic_roi,
+    )
+    
+    # Check if adaptive retry is needed
+    should_retry = (
+        enable_adaptive_retry and
+        int(income) >= min_income_for_retry and
+        initial_result["sweet_spot"] is not None
+    )
+    
+    if not should_retry:
+        return initial_result
+    
+    initial_deduction = initial_result["sweet_spot"]["deduction"]
+    utilization_ratio = initial_deduction / max_deduction
+    
+    # Only retry if utilization is below threshold
+    if utilization_ratio >= min_utilization_threshold:
+        return initial_result
+    
+    # Define alternative tolerance strategies
+    retry_tolerances = [
+        initial_roi_tolerance_bp * 3.0,      # 3x more relaxed (e.g., 30bp)
+        initial_roi_tolerance_bp * 0.3,      # Much stricter (e.g., 3bp)
+        initial_roi_tolerance_bp * 8.0,      # Very relaxed (e.g., 80bp)
+        initial_roi_tolerance_bp * 0.1,      # Very strict (e.g., 1bp)
+        200.0,                               # Extremely relaxed
+    ]
+    
+    retry_results = []
+    best_roi_result = initial_result
+    best_roi_value = 0.0
+    
+    if initial_result["sweet_spot"]:
+        initial_roi = initial_result["sweet_spot"]["why"]["roi_at_spot_percent"]
+        best_roi_value = initial_roi
+    
+    # Try each alternative tolerance
+    for tolerance_bp in retry_tolerances:
+        try:
+            retry_result = optimize_deduction(
+                income=income,
+                max_deduction=max_deduction,
+                step=step,
+                calc_fn=calc_fn,
+                context_fn=context_fn,
+                fine_window=fine_window,
+                fine_step=fine_step,
+                min_deduction=min_deduction,
+                roi_tolerance_bp=tolerance_bp,
+                prefer_smallest_on_tie=prefer_smallest_on_tie,
+                max_realistic_roi=max_realistic_roi,
+            )
+            
+            if retry_result["sweet_spot"] is not None:
+                retry_roi = retry_result["sweet_spot"]["why"]["roi_at_spot_percent"]
+                retry_deduction = retry_result["sweet_spot"]["deduction"]
+                retry_utilization = retry_deduction / max_deduction
+                retry_savings = retry_result["sweet_spot"]["tax_saved_absolute"]
+                
+                retry_info = {
+                    "tolerance_bp": tolerance_bp,
+                    "roi_percent": retry_roi,
+                    "deduction": retry_deduction,
+                    "utilization_ratio": retry_utilization,
+                    "tax_saved": retry_savings,
+                }
+                retry_results.append(retry_info)
+                
+                # Enhanced selection: prefer higher ROI, but consider absolute savings if ROI is similar
+                should_use_retry = False
+                roi_difference = retry_roi - best_roi_value
+                
+                if roi_difference > 0.1:  # More than 0.1% better ROI
+                    should_use_retry = True
+                elif roi_difference > -0.5 and retry_savings > best_roi_result["sweet_spot"]["tax_saved_absolute"] * 1.5:
+                    # ROI within 0.5% and savings are 50% higher - favor absolute savings
+                    should_use_retry = True
+                elif roi_difference > -1.0 and retry_savings > best_roi_result["sweet_spot"]["tax_saved_absolute"] * 2.0:
+                    # ROI within 1.0% and savings are 100% higher - strongly favor absolute savings
+                    should_use_retry = True
+                
+                if should_use_retry:
+                    best_roi_value = retry_roi
+                    best_roi_result = retry_result
+                    best_roi_result["adaptive_retry_used"] = {
+                        "original_tolerance_bp": initial_roi_tolerance_bp,
+                        "chosen_tolerance_bp": tolerance_bp,
+                        "roi_improvement": retry_roi - initial_roi,
+                        "utilization_improvement": retry_utilization - utilization_ratio,
+                        "selection_reason": "higher_roi" if roi_difference > 0.1 else "better_absolute_savings",
+                    }
+        
+        except Exception:
+            # Skip failed retries silently
+            continue
+    
+    # Add retry diagnostics to the result
+    if retry_results:
+        best_roi_result["adaptive_retry_info"] = {
+            "triggered_due_to_low_utilization": utilization_ratio,
+            "utilization_threshold": min_utilization_threshold,
+            "initial_result": {
+                "tolerance_bp": initial_roi_tolerance_bp,
+                "roi_percent": initial_roi if initial_result["sweet_spot"] else 0,
+                "deduction": initial_deduction,
+                "utilization_ratio": utilization_ratio,
+            },
+            "retry_results_tested": retry_results,
+            "improvement_found": "adaptive_retry_used" in best_roi_result,
+        }
+    
+    return best_roi_result
