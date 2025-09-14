@@ -195,6 +195,7 @@ def optimize(
     skip: List[str] = typer.Option([], help="Codes to skip"),
     json_out: bool = typer.Option(False, "--json"),
     tolerance_bp: float = typer.Option(10.0, help="Near-max ROI tolerance in basis points"),
+    filing_status: str = typer.Option("single", help="Filing status: single or married_joint"),
 ):
     """Find optimal deduction amounts.
     
@@ -210,7 +211,7 @@ def optimize(
         rprint({"error": str(e)})
         raise typer.Exit(code=2)
     
-    sg_cfg, fed_cfg, mult_cfg = load_configs(CONFIG_ROOT, year)
+    sg_cfg, fed_cfg, mult_cfg = load_configs_with_filing_status(CONFIG_ROOT, year, filing_status)
     default_picks = [i.code for i in mult_cfg.items if i.default_selected]
     codes = set(default_picks) | set(pick)
     codes -= set(skip)
@@ -239,9 +240,9 @@ def optimize(
         current_sg = max(current_sg, Decimal(0))
         current_fed = max(current_fed, Decimal(0))
         
-        sg_simple = simple_tax_sg(current_sg, sg_cfg)
+        sg_simple = simple_tax_sg_with_filing_status(current_sg, sg_cfg, filing_status)
         sg_after = apply_multipliers(sg_simple, mult_cfg, MultPick(codes))
-        fed = tax_federal(current_fed, fed_cfg)
+        fed = tax_federal_with_filing_status(current_fed, fed_cfg, filing_status)
         total = sg_after + fed
         return {"total": total, "federal": fed}
 
@@ -292,7 +293,7 @@ def optimize(
         feuer_item = next((item for item in mult_cfg.items if item.code == 'FEUER'), None)
         if feuer_item and 'FEUER' not in codes:
             current_sg = max(sg_income_decimal - Decimal(deduction), Decimal(0))
-            sg_simple_at_spot = simple_tax_sg(current_sg, sg_cfg)
+            sg_simple_at_spot = simple_tax_sg_with_filing_status(current_sg, sg_cfg, filing_status)
             potential_feuer_tax = float(sg_simple_at_spot * Decimal(str(feuer_item.rate)))
             sweet_spot["multipliers"]["feuer_warning"] = f"⚠️ Missing FEUER tax: +{potential_feuer_tax:.0f} CHF (add --pick FEUER)"
         
@@ -305,9 +306,12 @@ def optimize(
 
     # prettify Decimals for JSON friendliness
     def coerce(d):
-        if isinstance(d, dict):
-            return {k: float(v) if hasattr(v, "quantize") else coerce(v) for k, v in d.items()}
-        if isinstance(d, list):
+        from decimal import Decimal
+        if isinstance(d, Decimal):
+            return float(d)
+        elif isinstance(d, dict):
+            return {k: coerce(v) for k, v in d.items()}
+        elif isinstance(d, list):
             return [coerce(x) for x in d]
         return d
 
@@ -359,12 +363,13 @@ def plot(
     opt_max_deduction: Optional[int] = typer.Option(None, help="Max deduction for optimization"),
     opt_step: int = typer.Option(100, help="Deduction step for optimization"),
     opt_tolerance_bp: float = typer.Option(10.0, help="Tolerance (bp) used for plateau and sweet spot"),
+    filing_status: str = typer.Option("single", help="Filing status: single or married_joint"),
 ):
     """
     Plot the tax curve. If --annotate-sweet-spot is set (and opt_* provided),
     the figure will show a shaded plateau and a vertical line at the sweet spot.
     """
-    sg_cfg, fed_cfg, mult_cfg = load_configs(CONFIG_ROOT, year)
+    sg_cfg, fed_cfg, mult_cfg = load_configs_with_filing_status(CONFIG_ROOT, year, filing_status)
     default_picks = [i.code for i in mult_cfg.items if i.default_selected]
     codes = set(default_picks) | set(pick)
     codes -= set(skip)
@@ -375,9 +380,9 @@ def plot(
     for x in range(min, max + 1, step):
         # small inline compute (no optimizer), same logic as _calc_once
         inc_d = chf(x)
-        sg_simple = simple_tax_sg(inc_d, sg_cfg)
+        sg_simple = simple_tax_sg_with_filing_status(inc_d, sg_cfg, filing_status)
         sg_after = apply_multipliers(sg_simple, mult_cfg, MultPick(picks_sorted))
-        fed = tax_federal(inc_d, fed_cfg)
+        fed = tax_federal_with_filing_status(inc_d, fed_cfg, filing_status)
         total = sg_after + fed
         pts.append((x, total))
 
@@ -386,9 +391,9 @@ def plot(
     if annotate_sweet_spot and (opt_income is not None) and (opt_max_deduction is not None):
         # Optimizer setup mirrors the optimize command
         def calc_fn(inc: Decimal):
-            sg_simple = simple_tax_sg(inc, sg_cfg)
+            sg_simple = simple_tax_sg_with_filing_status(inc, sg_cfg, filing_status)
             sg_after = apply_multipliers(sg_simple, mult_cfg, MultPick(picks_sorted))
-            fed = tax_federal(inc, fed_cfg)
+            fed = tax_federal_with_filing_status(inc, fed_cfg, filing_status)
             total = sg_after + fed
             return {"total": total, "federal": fed}
 
@@ -415,9 +420,9 @@ def plot(
 
                 # compute total at sweet spot income to place the marker nicely
                 t_inc_d = chf(sweet_income)
-                sg_simple = simple_tax_sg(t_inc_d, sg_cfg)
+                sg_simple = simple_tax_sg_with_filing_status(t_inc_d, sg_cfg, filing_status)
                 sg_after = apply_multipliers(sg_simple, mult_cfg, MultPick(picks_sorted))
-                fed = tax_federal(t_inc_d, fed_cfg)
+                fed = tax_federal_with_filing_status(t_inc_d, fed_cfg, filing_status)
                 sweet_total = float(sg_after + fed)
 
                 # plateau band in income space
@@ -450,6 +455,7 @@ def scan(
     out: str = typer.Option("scan.csv", help="Output CSV path"),
     json_out: bool = typer.Option(False, "--json", help="Print JSON instead of writing CSV"),
     include_local_marginal: bool = typer.Option(True, help="Compute local marginal % using Δ100"),
+    filing_status: str = typer.Option("single", help="Filing status: single or married_joint"),
 ):
     """
     Produce a dense table of values for deductions d = 0..max_deduction (step=d_step):
@@ -469,7 +475,7 @@ def scan(
         rprint({"error": str(e)})
         raise typer.Exit(code=2)
         
-    sg_cfg, fed_cfg, mult_cfg = load_configs(CONFIG_ROOT, year)
+    sg_cfg, fed_cfg, mult_cfg = load_configs_with_filing_status(CONFIG_ROOT, year, filing_status)
     default_picks = [i.code for i in mult_cfg.items if i.default_selected]
     codes = set(default_picks) | set(pick)
     codes -= set(skip)
@@ -485,9 +491,9 @@ def scan(
 
     # Helper to compute totals with separate SG and Federal incomes
     def calc_all(sg_inc: Decimal, fed_inc: Decimal):
-        sg_simple = simple_tax_sg(sg_inc, sg_cfg)
+        sg_simple = simple_tax_sg_with_filing_status(sg_inc, sg_cfg, filing_status)
         sg_after = apply_multipliers(sg_simple, mult_cfg, MultPick(picks_sorted))
-        fed = tax_federal(fed_inc, fed_cfg)
+        fed = tax_federal_with_filing_status(fed_inc, fed_cfg, filing_status)
         total = sg_after + fed
         return sg_simple, sg_after, fed, total
 
@@ -592,6 +598,7 @@ def compare_brackets(
     income_sg: Optional[int] = typer.Option(None, help="St. Gallen taxable income (CHF)"),
     income_fed: Optional[int] = typer.Option(None, help="Federal taxable income (CHF)"),
     deduction: int = typer.Option(0, "--deduction", help="Amount to deduct"),
+    filing_status: str = typer.Option("single", help="Filing status: single or married_joint"),
 ):
     """Show which tax brackets apply before/after deduction.
     
@@ -605,7 +612,7 @@ def compare_brackets(
         rprint({"error": str(e)})
         raise typer.Exit(code=2)
         
-    sg_cfg, fed_cfg, mult_cfg = load_configs(CONFIG_ROOT, year)
+    sg_cfg, fed_cfg, mult_cfg = load_configs_with_filing_status(CONFIG_ROOT, year, filing_status)
     
     # Original incomes
     original_sg_income = chf(sg_income)
