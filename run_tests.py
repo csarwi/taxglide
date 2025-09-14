@@ -62,6 +62,8 @@ def run_tests() -> int:
             "opt":         "tests/test_optimization.py",
             "config":      "tests/test_config_validation.py",
             "validation":  "tests/test_config_validation.py",
+            "married":     "tests/test_married_filing.py",
+            "filing":      "tests/test_married_filing.py",
         }
         if cat in mapping:
             pytest_target = mapping[cat]
@@ -75,22 +77,12 @@ def run_tests() -> int:
         cmd.append("-v")
     cmd += rest
 
-    # 1) run tests
+    # Run tests
     code = _run(cmd)
     if code != 0:
-        print("❌ tests failed; skipping build & reinstall.")
+        print("❌ tests failed")
         return code
-    print("✅ tests passed.")
-
-    # 2) always refresh editable install
-    try:
-        subprocess.check_call([sys.executable, "-m", "pip", "install", "-e", str(PROJECT_ROOT)])
-        print("✅ refreshed editable install (pip install -e .)")
-    except subprocess.CalledProcessError as e:
-        print(f"❌ editable install failed with exit code {e.returncode}")
-        return e.returncode
-
-
+    print("✅ tests passed")
     return 0
 
 if __name__ == "__main__":

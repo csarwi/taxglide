@@ -1,7 +1,7 @@
 from decimal import Decimal, ROUND_DOWN
 from math import ceil, floor
 from typing import Tuple, Optional, Dict, Any
-from .models import FederalConfig, chf
+from .models import FederalConfig, chf, FilingStatus
 from .rounding import final_round
 
 StepMode = {"ceil": ceil, "floor": floor}
@@ -41,6 +41,23 @@ def tax_federal(income: Decimal, cfg: FederalConfig) -> Decimal:
     step = Decimal("0.05")
     tax = (tax / step).to_integral_value(rounding=ROUND_DOWN) * step
     return tax
+
+
+def tax_federal_with_filing_status(
+    income: Decimal, 
+    cfg: FederalConfig, 
+    filing_status: FilingStatus = "single"
+) -> Decimal:
+    """
+    Calculate federal tax with filing status consideration.
+    
+    Note: The cfg parameter should already contain the appropriate tax table
+    (single or married) based on the filing status. This function now simply
+    applies the standard calculation to the provided configuration.
+    """
+    # The configuration should already be the correct one (single or married)
+    # based on how it was loaded, so we just use the standard calculation
+    return tax_federal(income, cfg)
 
 
 def federal_marginal_hundreds(income: Decimal, cfg: FederalConfig) -> float:

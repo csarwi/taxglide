@@ -1,6 +1,6 @@
 
 from decimal import Decimal
-from .models import StGallenConfig, chf
+from .models import StGallenConfig, chf, FilingStatus
 from .rounding import final_round
 
 def simple_tax_sg(income: Decimal, cfg: StGallenConfig) -> Decimal:
@@ -24,6 +24,38 @@ def simple_tax_sg(income: Decimal, cfg: StGallenConfig) -> Decimal:
         if income <= upper:
             break
     return final_round(tax, cfg.rounding.tax_round_to)
+
+
+def simple_tax_sg_with_filing_status(
+    income: Decimal, 
+    cfg: StGallenConfig, 
+    filing_status: FilingStatus = "single"
+) -> Decimal:
+    """
+    Calculate SG simple tax with filing status consideration.
+    
+    For married_joint: Apply the tax rate of half the income to the full income.
+    This implements point 3 of the Swiss tax law:
+    "Für gemeinsam steuerpflichtige Ehegatten wird der Steuersatz des 
+     halben steuerbaren Einkommens angewendet."
+    """
+    if filing_status == "married_joint":
+        # Calculate the tax rate at half the income
+        half_income = income / Decimal(2)
+        
+        # Get the effective tax rate at half income
+        if half_income == 0:
+            return Decimal(0)
+            
+        tax_at_half = simple_tax_sg(half_income, cfg)
+        effective_rate = tax_at_half / half_income
+        
+        # Apply this rate to the full income
+        tax_at_full = income * effective_rate
+        return final_round(tax_at_full, cfg.rounding.tax_round_to)
+    else:
+        # Single filing - use normal calculation
+        return simple_tax_sg(income, cfg)
 
 
 def sg_bracket_info(income: Decimal | int, cfg: StGallenConfig):

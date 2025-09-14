@@ -68,6 +68,9 @@ class Breakdown:
     sg_after_mult: CHF
     combined: CHF
 
+# Filing status enumeration
+FilingStatus = Literal["single", "married_joint"]
+
 @dataclass
 class CalcResult:
     income: CHF
@@ -79,6 +82,7 @@ class CalcResult:
     marginal_total: float
     marginal_federal_hundreds: float
     picks: List[str]
+    filing_status: Optional[FilingStatus] = "single"
 
 # helpers
 

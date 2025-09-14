@@ -1,0 +1,25 @@
+currency: CHF
+rounding:
+  per_100_step: true
+  step_size: 100
+  step_mode: floor
+  tax_round_to: 0
+  scope: as_official
+segments:
+  - { from: 0,      to: 29700,  at_income: 0,      base_tax_at: 0.00,     per100: 0.00 }
+  - { from: 29700,  to: 53400,  at_income: 29700,  base_tax_at: 0.00,     per100: 1.00 }
+  - { from: 53400,  to: 61300,  at_income: 53400,  base_tax_at: 237.00,   per100: 2.00 }
+  - { from: 61300,  to: 79100,  at_income: 61300,  base_tax_at: 395.00,   per100: 3.00 }
+  - { from: 79100,  to: 94900,  at_income: 79100,  base_tax_at: 929.00,   per100: 4.00 }
+  - { from: 94900,  to: 108600, at_income: 94900,  base_tax_at: 1561.00,  per100: 5.00 }
+  - { from: 108600, to: 120500, at_income: 108600, base_tax_at: 2246.00,  per100: 6.00 }
+  - { from: 120500, to: 130500, at_income: 120500, base_tax_at: 2960.00,  per100: 7.00 }
+  - { from: 130500, to: 138300, at_income: 130500, base_tax_at: 3660.00,  per100: 8.00 }
+  - { from: 138300, to: 144200, at_income: 138300, base_tax_at: 4284.00,  per100: 9.00 }
+  - { from: 144200, to: 148200, at_income: 144200, base_tax_at: 4815.00,  per100: 10.00 }
+  - { from: 148200, to: 150300, at_income: 148200, base_tax_at: 5215.00,  per100: 11.00 }
+  - { from: 150300, to: 152300, at_income: 150300, base_tax_at: 5446.00,  per100: 12.00 }
+  - { from: 152300, to: 940800, at_income: 152300, base_tax_at: 5686.00,  per100: 13.00 }
+  - { from: 940800, to: 940900, at_income: 940800, base_tax_at: 108191.00, per100: 0.00 }
+  - { from: 940900, to: null,   at_income: 940900, base_tax_at: 108203.50, per100: 11.50 }
+notes: "Bundessteuer (Verheiratete/Married). Marginal calc aligned to full hundreds."

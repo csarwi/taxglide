@@ -7,15 +7,16 @@ import csv
 import typer
 from rich import print as rprint
 
-from .io.loader import load_configs
-from .engine.stgallen import simple_tax_sg, sg_bracket_info
+from .io.loader import load_configs, load_configs_with_filing_status
+from .engine.stgallen import simple_tax_sg, sg_bracket_info, simple_tax_sg_with_filing_status
 from .engine.federal import (
     tax_federal,
     federal_marginal_hundreds,
     federal_segment_info,
+    tax_federal_with_filing_status,
 )
 from .engine.multipliers import apply_multipliers, MultPick
-from .engine.models import chf
+from .engine.models import chf, FilingStatus
 from .engine.optimize import optimize_deduction, validate_optimization_inputs
 from .viz.curve import plot_curve
 
@@ -67,12 +68,18 @@ def _resolve_incomes(
     )
 
 
-def _calc_once(year: int, income: int, picks: List[str]):
+def _calc_once(year: int, income: int, picks: List[str], filing_status: FilingStatus = "single"):
     """Legacy function for backward compatibility. Uses same income for both SG and Federal."""
-    return _calc_once_separate(year, income, income, picks)
+    return _calc_once_separate(year, income, income, picks, filing_status)
 
 
-def _calc_once_separate(year: int, sg_income: int, fed_income: int, picks: List[str]):
+def _calc_once_separate(
+    year: int, 
+    sg_income: int, 
+    fed_income: int, 
+    picks: List[str], 
+    filing_status: FilingStatus = "single"
+):
     """Calculate taxes with separate SG and Federal taxable incomes.
     
     Args:
@@ -80,17 +87,18 @@ def _calc_once_separate(year: int, sg_income: int, fed_income: int, picks: List[
         sg_income: St. Gallen taxable income
         fed_income: Federal taxable income  
         picks: Multiplier codes to apply
+        filing_status: Filing status ("single" or "married_joint")
         
     Returns:
         Dict with tax calculation results
     """
-    sg_cfg, fed_cfg, mult_cfg = load_configs(CONFIG_ROOT, year)
+    sg_cfg, fed_cfg, mult_cfg = load_configs_with_filing_status(CONFIG_ROOT, year, filing_status)
     sg_income_d = chf(sg_income)
     fed_income_d = chf(fed_income)
 
-    sg_simple = simple_tax_sg(sg_income_d, sg_cfg)
+    sg_simple = simple_tax_sg_with_filing_status(sg_income_d, sg_cfg, filing_status)
     sg_after = apply_multipliers(sg_simple, mult_cfg, MultPick(picks))
-    fed = tax_federal(fed_income_d, fed_cfg)
+    fed = tax_federal_with_filing_status(fed_income_d, fed_cfg, filing_status)
 
     total = sg_after + fed
     
@@ -100,8 +108,12 @@ def _calc_once_separate(year: int, sg_income: int, fed_income: int, picks: List[
 
     # Combined marginal via 1 CHF diff (finite difference) - check both incomes
     eps = Decimal(1)
-    sg_marginal = apply_multipliers(simple_tax_sg(sg_income_d + eps, sg_cfg), mult_cfg, MultPick(picks)) - sg_after
-    fed_marginal = tax_federal(fed_income_d + eps, fed_cfg) - fed
+    sg_marginal = apply_multipliers(
+        simple_tax_sg_with_filing_status(sg_income_d + eps, sg_cfg, filing_status), 
+        mult_cfg, 
+        MultPick(picks)
+    ) - sg_after
+    fed_marginal = tax_federal_with_filing_status(fed_income_d + eps, fed_cfg, filing_status) - fed
     marginal_total = float(sg_marginal + fed_marginal) / 1.0
 
     m_fed_h = federal_marginal_hundreds(fed_income_d, fed_cfg)
@@ -118,6 +130,7 @@ def _calc_once_separate(year: int, sg_income: int, fed_income: int, picks: List[
         "marginal_total": marginal_total,
         "marginal_federal_hundreds": m_fed_h,
         "picks": picks,
+        "filing_status": filing_status,
     }
 
 
@@ -130,12 +143,17 @@ def calc(
     pick: List[str] = typer.Option([], help="Codes to pick"),
     skip: List[str] = typer.Option([], help="Codes to skip (overrides defaults)"),
     json_out: bool = typer.Option(False, "--json", help="Output JSON"),
+    filing_status: str = typer.Option("single", help="Filing status: single or married_joint"),
 ):
     """Compute federal + SG taxes and show breakdown.
     
     Use either:
       --income 80000                           (same income for both SG and Federal)
       --income-sg 78000 --income-fed 80000     (different incomes due to different deductions)
+    
+    Filing status:
+      --filing-status single                   (default - individual filing)
+      --filing-status married_joint            (married filing jointly - uses income splitting)
     """
     try:
         sg_income, fed_income = _resolve_incomes(income, income_sg, income_fed)
@@ -149,12 +167,13 @@ def calc(
     codes = set(default_picks) | set(pick)
     codes -= set(skip)
 
-    res = _calc_once_separate(year, sg_income, fed_income, sorted(codes))
+    res = _calc_once_separate(year, sg_income, fed_income, sorted(codes), filing_status)
     
     # Add FEUER warning if not selected (simplified)
     feuer_item = next((item for item in mult_cfg.items if item.code == 'FEUER'), None)
     if feuer_item and 'FEUER' not in codes:
-        sg_simple_base = Decimal(str(res["sg_simple"]))  # already computed base
+        # Note: FEUER is typically calculated on the simple tax, which already includes filing status
+        sg_simple_base = Decimal(str(res["sg_simple"]))  # already computed with filing status
         potential_feuer_tax = sg_simple_base * Decimal(str(feuer_item.rate))
         res["feuer_warning"] = f"⚠️ Missing FEUER tax: +{potential_feuer_tax:.0f} CHF (add --pick FEUER)"
     

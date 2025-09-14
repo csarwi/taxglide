@@ -4,7 +4,7 @@ import pytest
 from pathlib import Path
 from decimal import Decimal
 
-from taxglide.io.loader import load_configs
+from taxglide.io.loader import load_configs, load_configs_with_filing_status
 from taxglide.engine.models import chf
 
 # Path to test configs (use the actual 2025 configs for now)
@@ -24,6 +24,18 @@ def year_2025():
 def configs_2025(config_root):
     """Load 2025 tax configurations."""
     sg_cfg, fed_cfg, mult_cfg = load_configs(config_root, 2025)
+    return sg_cfg, fed_cfg, mult_cfg
+
+@pytest.fixture
+def configs_2025_married(config_root):
+    """Load 2025 tax configurations for married joint filing."""
+    sg_cfg, fed_cfg, mult_cfg = load_configs_with_filing_status(config_root, 2025, "married_joint")
+    return sg_cfg, fed_cfg, mult_cfg
+
+@pytest.fixture
+def configs_2025_single(config_root):
+    """Load 2025 tax configurations for single filing."""
+    sg_cfg, fed_cfg, mult_cfg = load_configs_with_filing_status(config_root, 2025, "single")
     return sg_cfg, fed_cfg, mult_cfg
 
 @pytest.fixture

@@ -176,9 +176,39 @@ Platform: Windows x64
     }
 }
 
+# Function to run tests before building
+function Test-TaxGlide {
+    Write-Host "=== Running Tests Before Build ===" -ForegroundColor Cyan
+    Write-Host "Ensuring code quality before building..." -ForegroundColor Yellow
+    
+    try {
+        # Run the test suite using run_tests.py
+        $TestProcess = Start-Process -FilePath $BuildConfig.PythonPath -ArgumentList @("run_tests.py") -Wait -PassThru -NoNewWindow
+        
+        if ($TestProcess.ExitCode -eq 0) {
+            Write-Host "✅ All tests passed - proceeding with build" -ForegroundColor Green
+            return $true
+        } else {
+            Write-Host "❌ Tests failed - build cancelled" -ForegroundColor Red
+            Write-Host "Please fix failing tests before building" -ForegroundColor Red
+            return $false
+        }
+    } catch {
+        Write-Host "❌ Error running tests: $($_.Exception.Message)" -ForegroundColor Red
+        return $false
+    }
+}
+
 # Main build function
 function Build-TaxGlide {
     Write-Host "=== TaxGlide Nuitka Build Process ===" -ForegroundColor Cyan
+    
+    # Run tests first
+    if (-not (Test-TaxGlide)) {
+        Write-Host "Build aborted due to test failures" -ForegroundColor Red
+        return $false
+    }
+    
     Write-Host "Starting build with optimized settings..." -ForegroundColor Yellow
     
     # Ensure output directory exists

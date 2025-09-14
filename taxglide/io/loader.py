@@ -96,3 +96,22 @@ def load_configs(root: Path, year: int):
     mult = MultipliersConfig(**load_yaml(root / y / "multipliers.yaml"))
     _validate_configs(sg, fed, mult)
     return sg, fed, mult
+
+def load_configs_with_filing_status(root: Path, year: int, filing_status: str = "single"):
+    """Load configs with appropriate federal table based on filing status"""
+    y = str(year)
+    sg = StGallenConfig(**load_yaml(root / y / "stgallen.yaml"))
+    
+    # Load appropriate federal config based on filing status
+    if filing_status == "married_joint":
+        fed_file = root / y / "federal_married.yaml"
+        if not fed_file.exists():
+            # Fallback to regular federal config if married config doesn't exist
+            fed_file = root / y / "federal.yaml"
+    else:
+        fed_file = root / y / "federal.yaml"
+        
+    fed = FederalConfig(**load_yaml(fed_file))
+    mult = MultipliersConfig(**load_yaml(root / y / "multipliers.yaml"))
+    _validate_configs(sg, fed, mult)
+    return sg, fed, mult

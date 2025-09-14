@@ -7,6 +7,7 @@ Almost mainly written with ChatGPT-5 and Claude.
 ## Features
 
 - **Accurate Swiss Tax Models**: Federal (marginal brackets) + St. Gallen (progressive + multipliers)
+- **Married Joint Filing Support**: Income splitting for married couples per Swiss tax law 🆕
 - **Separate Income Support**: Different taxable incomes for SG and Federal taxes 🆕
 - **Smart Deduction Optimization**: Find optimal deduction amounts using ROI analysis with plateau detection
 - **Enhanced Output**: Detailed income breakdowns when using separate SG/Federal incomes 🆕
@@ -26,7 +27,7 @@ pip install -e .
 
 ⚠️ **IMPORTANT: Always run tests before building or deploying!**
 
-TaxGlide includes a comprehensive test suite with 39 tests that validate calculations against real Swiss tax values with ≤1 CHF accuracy.
+TaxGlide includes a comprehensive test suite with 71 tests that validate calculations against real Swiss tax values with ≤1 CHF accuracy, including married joint filing scenarios.
 
 ### Run Tests (Verbose)
 
@@ -138,9 +139,10 @@ taxglide optimize --year 2025 --income-sg 78000 --income-fed 80000 --max-deducti
 ```
 configs/
 ├── 2025/
-│   ├── federal.yaml      # Swiss federal tax brackets
-│   ├── stgallen.yaml     # SG cantonal tax brackets  
-│   └── multipliers.yaml  # Tax multipliers (cantonal, communal, etc.)
+│   ├── federal.yaml         # Swiss federal tax brackets (single filing)
+│   ├── federal_married.yaml # Swiss federal tax brackets (married joint filing) 🆕
+│   ├── stgallen.yaml        # SG cantonal tax brackets  
+│   └── multipliers.yaml     # Tax multipliers (cantonal, communal, etc.)
 ```
 
 ## Commands Reference
@@ -161,6 +163,7 @@ taxglide calc --year 2025 --income-sg 73000 --income-fed 75000 [OPTIONS]
 - `--income AMOUNT`: Single taxable income for both SG and Federal (CHF)
 - `--income-sg AMOUNT`: St. Gallen taxable income (CHF)
 - `--income-fed AMOUNT`: Federal taxable income (CHF)
+- `--filing-status STATUS`: Filing status - `single` (default) or `married_joint` 🆕
 - `--pick CODE`: Include specific multiplier (e.g., `--pick FEUER` for fire service tax)
 - `--skip CODE`: Exclude multiplier (e.g., `--skip CHURCH` to skip church tax)
 - `--json`: Output as JSON instead of formatted display
@@ -181,6 +184,9 @@ taxglide calc --year 2025 --income-sg 68000 --income-fed 70000 --pick FEUER --js
 
 # Custom multiplier combination
 taxglide calc --year 2025 --income 120000 --pick FEUER --pick CHURCH
+
+# Married joint filing (income splitting)
+taxglide calc --year 2025 --income 120000 --filing-status married_joint
 ```
 
 **Sample Output (Single Income):**
@@ -513,6 +519,23 @@ When using separate incomes, optimization shows both resulting incomes:
     }
   }
 }
+```
+
+---
+
+## Married Joint Filing 🆕
+
+TaxGlide supports Swiss married joint filing which uses income splitting for SG taxes and separate tax tables for federal taxes.
+
+```bash
+# Single filing (default)
+taxglide calc --year 2025 --income 94000
+
+# Married joint filing
+taxglide calc --year 2025 --income 94000 --filing-status married_joint
+
+# Works with all commands
+taxglide optimize --year 2025 --income 94000 --max-deduction 10000 --filing-status married_joint
 ```
 
 ---
