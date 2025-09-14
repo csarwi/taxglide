@@ -61,7 +61,7 @@ class TestConfigurationValidation:
         # Valid federal config
         fed_data = {
             "currency": "CHF",
-            "rounding": {"per_100_step": True, "step_size": 100, "step_mode": "floor", "tax_round_to": 0, "scope": "as_official"},
+            "rounding": {"per_100_step": True, "step_size": 100, "step_mode": "floor"},
             "segments": [
                 {"from": 0, "to": 50000, "at_income": 0, "base_tax_at": 0.0, "per100": 0.0},
                 {"from": 50000, "to": 200000, "at_income": 50000, "base_tax_at": 1000.0, "per100": 1.0}
@@ -89,7 +89,7 @@ class TestConfigurationValidation:
         """Test federal segments with negative rates should fail."""
         fed_data = {
             "currency": "CHF",
-            "rounding": {"per_100_step": True, "step_size": 100, "step_mode": "floor", "tax_round_to": 0, "scope": "as_official"},
+            "rounding": {"per_100_step": True, "step_size": 100, "step_mode": "floor"},
             "segments": [
                 {"from": 0, "to": 200000, "at_income": 0, "base_tax_at": 0.0, "per100": -1.0}  # Negative rate
             ]
@@ -115,7 +115,7 @@ class TestConfigurationValidation:
         """Test overlapping federal segments should fail."""
         fed_data = {
             "currency": "CHF",
-            "rounding": {"per_100_step": True, "step_size": 100, "step_mode": "floor", "tax_round_to": 0, "scope": "as_official"},
+            "rounding": {"per_100_step": True, "step_size": 100, "step_mode": "floor"},
             "segments": [
                 {"from": 0, "to": 150000, "at_income": 0, "base_tax_at": 0.0, "per100": 0.0},
                 {"from": 100000, "to": 200000, "at_income": 100000, "base_tax_at": 10000.0, "per100": 1.0}  # Overlaps with previous
@@ -149,7 +149,7 @@ class TestConfigurationValidation:
         
         fed_data = {
             "currency": "CHF",
-            "rounding": {"per_100_step": True, "step_size": 100, "step_mode": "floor", "tax_round_to": 0, "scope": "as_official"},
+            "rounding": {"per_100_step": True, "step_size": 100, "step_mode": "floor"},
             "segments": [{"from": 0, "to": 200000, "at_income": 0, "base_tax_at": 0.0, "per100": 0.0}]
         }
         
@@ -176,7 +176,7 @@ class TestConfigurationValidation:
         
         fed_data = {
             "currency": "CHF",
-            "rounding": {"per_100_step": True, "step_size": 100, "step_mode": "floor", "tax_round_to": 0, "scope": "as_official"},
+            "rounding": {"per_100_step": True, "step_size": 100, "step_mode": "floor"},
             "segments": [{"from": 0, "to": 200000, "at_income": 0, "base_tax_at": 0.0, "per100": 0.0}]
         }
         
@@ -208,7 +208,7 @@ class TestConfigurationValidation:
         
         fed_data = {
             "currency": "CHF",
-            "rounding": {"per_100_step": True, "step_size": 100, "step_mode": "floor", "tax_round_to": 0, "scope": "as_official"},
+            "rounding": {"per_100_step": True, "step_size": 100, "step_mode": "floor"},
             "segments": [{"from": 0, "to": 200000, "at_income": 0, "base_tax_at": 0.0, "per100": 0.0}]
         }
         
@@ -232,7 +232,7 @@ class TestConfigurationValidation:
         
         fed_data = {
             "currency": "CHF",
-            "rounding": {"per_100_step": True, "step_size": 100, "step_mode": "floor", "tax_round_to": 0, "scope": "as_official"},
+            "rounding": {"per_100_step": True, "step_size": 100, "step_mode": "floor"},
             "segments": [{"from": 0, "to": 200000, "at_income": 0, "base_tax_at": 0.0, "per100": 0.0}]
         }
         
@@ -246,7 +246,7 @@ class TestConfigurationValidation:
         # Test with very low maximum income coverage
         fed_data = {
             "currency": "CHF",
-            "rounding": {"per_100_step": True, "step_size": 100, "step_mode": "floor", "tax_round_to": 0, "scope": "as_official"},
+            "rounding": {"per_100_step": True, "step_size": 100, "step_mode": "floor"},
             "segments": [{"from": 0, "to": 1000, "at_income": 0, "base_tax_at": 0.0, "per100": 0.0}]  # Only covers up to 1000 CHF
         }
         

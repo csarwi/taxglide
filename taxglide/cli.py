@@ -24,6 +24,27 @@ app = typer.Typer(help="Swiss tax CLI (SG + Federal), config driven")
 
 CONFIG_ROOT = Path(__file__).resolve().parents[1] / "configs"
 
+VALID_FILING_STATUSES = {"single", "married_joint"}
+
+def _validate_filing_status(value: str) -> str:
+    """Validate filing status parameter.
+    
+    Args:
+        value: Filing status string
+        
+    Returns:
+        Validated filing status
+        
+    Raises:
+        typer.BadParameter: If filing status is invalid
+    """
+    value = value.strip().lower()
+    if value not in VALID_FILING_STATUSES:
+        raise typer.BadParameter(
+            f"Filing status must be one of: {', '.join(sorted(VALID_FILING_STATUSES))}"
+        )
+    return value
+
 
 def _get_adaptive_tolerance_bp(income: int) -> float:
     """Return income-adaptive tolerance in basis points.
@@ -47,7 +68,6 @@ def _print_optimization_result(result: dict, tolerance_bp: float, tolerance_sour
     from rich.panel import Panel
     from rich.text import Text
     from rich.table import Table
-    from rich.columns import Columns
     
     console = Console()
     
@@ -177,7 +197,8 @@ def _print_optimization_result(result: dict, tolerance_bp: float, tolerance_sour
     if multipliers.get("applied"):
         mult_text = Text()
         mult_text.append(f"📎 Applied Multipliers: {', '.join(multipliers['applied'])}\n", style="cyan")
-        mult_text.append(f"Total Rate: {multipliers.get('total_rate', 0):.2f}%")
+        factor = multipliers.get("total_rate", 0.0)
+        mult_text.append(f"Total Factor: ×{factor:.2f}  (={factor*100:.0f}% of SG simple)")
         console.print("\n", mult_text)
 
 
@@ -380,14 +401,14 @@ def _calc_once_separate(
 
 @app.command()
 def calc(
-    year: int = typer.Option(..., help="Tax year, e.g., 2025"),
-    income: Optional[int] = typer.Option(None, help="Taxable income for both SG and Federal (CHF)"),
-    income_sg: Optional[int] = typer.Option(None, help="St. Gallen taxable income (CHF)"),
-    income_fed: Optional[int] = typer.Option(None, help="Federal taxable income (CHF)"),
+    year: int = typer.Option(..., min=1900, help="Tax year, e.g., 2025"),
+    income: Optional[int] = typer.Option(None, min=0, help="Taxable income for both SG and Federal (CHF)"),
+    income_sg: Optional[int] = typer.Option(None, min=0, help="St. Gallen taxable income (CHF)"),
+    income_fed: Optional[int] = typer.Option(None, min=0, help="Federal taxable income (CHF)"),
     pick: List[str] = typer.Option([], help="Codes to pick"),
     skip: List[str] = typer.Option([], help="Codes to skip (overrides defaults)"),
     json_out: bool = typer.Option(False, "--json", help="Output JSON"),
-    filing_status: str = typer.Option("single", help="Filing status: single or married_joint"),
+    filing_status: str = typer.Option("single", callback=lambda ctx, param, value: _validate_filing_status(value) if value else "single", help="Filing status: single or married_joint"),
 ):
     """Compute federal + SG taxes and show breakdown.
     
@@ -430,17 +451,17 @@ def calc(
 
 @app.command()
 def optimize(
-    year: int = typer.Option(...),
-    income: Optional[int] = typer.Option(None, help="Taxable income for both SG and Federal (CHF)"),
-    income_sg: Optional[int] = typer.Option(None, help="St. Gallen taxable income (CHF)"),
-    income_fed: Optional[int] = typer.Option(None, help="Federal taxable income (CHF)"),
-    max_deduction: int = typer.Option(...),
-    step: int = typer.Option(100, help="Deduction step (CHF)"),
+    year: int = typer.Option(..., min=1900),
+    income: Optional[int] = typer.Option(None, min=0, help="Taxable income for both SG and Federal (CHF)"),
+    income_sg: Optional[int] = typer.Option(None, min=0, help="St. Gallen taxable income (CHF)"),
+    income_fed: Optional[int] = typer.Option(None, min=0, help="Federal taxable income (CHF)"),
+    max_deduction: int = typer.Option(..., min=0),
+    step: int = typer.Option(100, min=1, help="Deduction step (CHF)"),
     pick: List[str] = typer.Option([], help="Codes to pick"),
     skip: List[str] = typer.Option([], help="Codes to skip"),
     json_out: bool = typer.Option(False, "--json"),
     tolerance_bp: Optional[float] = typer.Option(None, help="Near-max ROI tolerance in basis points (auto-selected by income if not specified)"),
-    filing_status: str = typer.Option("single", help="Filing status: single or married_joint"),
+    filing_status: str = typer.Option("single", callback=lambda ctx, param, value: _validate_filing_status(value) if value else "single", help="Filing status: single or married_joint"),
     disable_adaptive: bool = typer.Option(False, "--disable-adaptive", help="Disable adaptive multi-tolerance retry for low utilization"),
 ):
     """Find optimal deduction amounts with adaptive multi-tolerance optimization.
@@ -469,7 +490,7 @@ def optimize(
     # Early validation for clearer CLI errors - use the higher income for validation
     base_income = max(sg_income, fed_income)
     try:
-        validate_optimization_inputs(Decimal(base_income), max_deduction, 1, step)
+        validate_optimization_inputs(Decimal(base_income), max_deduction, 100, step)
     except ValueError as e:
         rprint({"error": str(e)})
         raise typer.Exit(code=2)
@@ -513,13 +534,20 @@ def optimize(
             "sg_bracket": sg_bracket_info(current_sg, sg_cfg),
         }
 
+    # Cache calc_fn for performance - optimizer may call identical incomes multiple times
+    from functools import lru_cache
+    
+    @lru_cache(maxsize=None)
+    def _calc_cached(y: Decimal):
+        return calc_fn(y)
+    
     # Use adaptive optimization by default, unless disabled
     if disable_adaptive:
         out = optimize_deduction(
             Decimal(base_income),  # Use higher income as baseline for optimization
             max_deduction,
             step,
-            calc_fn,
+            _calc_cached,
             context_fn=context_fn,
             roi_tolerance_bp=tolerance_bp,
         )
@@ -528,7 +556,7 @@ def optimize(
             Decimal(base_income),  # Use higher income as baseline for optimization
             max_deduction,
             step,
-            calc_fn,
+            _calc_cached,
             context_fn=context_fn,
             initial_roi_tolerance_bp=tolerance_bp,
             enable_adaptive_retry=True,
@@ -643,7 +671,7 @@ def plot(
     opt_max_deduction: Optional[int] = typer.Option(None, help="Max deduction for optimization"),
     opt_step: int = typer.Option(100, help="Deduction step for optimization"),
     opt_tolerance_bp: float = typer.Option(10.0, help="Tolerance (bp) used for plateau and sweet spot"),
-    filing_status: str = typer.Option("single", help="Filing status: single or married_joint"),
+    filing_status: str = typer.Option("single", callback=lambda ctx, param, value: _validate_filing_status(value) if value else "single", help="Filing status: single or married_joint"),
 ):
     """
     Plot the tax curve. If --annotate-sweet-spot is set (and opt_* provided),
@@ -679,7 +707,7 @@ def plot(
 
         # safety: reuse validate
         try:
-            validate_optimization_inputs(Decimal(opt_income), int(opt_max_deduction), 1, opt_step)
+            validate_optimization_inputs(Decimal(opt_income), int(opt_max_deduction), 100, opt_step)
         except ValueError as e:
             rprint({"warning": f"Cannot annotate sweet spot: {e}"})
             annotations = None
@@ -724,18 +752,18 @@ def plot(
 
 @app.command()
 def scan(
-    year: int = typer.Option(..., help="Tax year (e.g., 2025)"),
-    income: Optional[int] = typer.Option(None, help="Original taxable income for both SG and Federal (CHF)"),
-    income_sg: Optional[int] = typer.Option(None, help="St. Gallen taxable income (CHF)"),
-    income_fed: Optional[int] = typer.Option(None, help="Federal taxable income (CHF)"),
-    max_deduction: int = typer.Option(..., help="Max deduction to explore (CHF)"),
-    d_step: int = typer.Option(100, help="Deduction increment (CHF)"),
+    year: int = typer.Option(..., min=1900, help="Tax year (e.g., 2025)"),
+    income: Optional[int] = typer.Option(None, min=0, help="Original taxable income for both SG and Federal (CHF)"),
+    income_sg: Optional[int] = typer.Option(None, min=0, help="St. Gallen taxable income (CHF)"),
+    income_fed: Optional[int] = typer.Option(None, min=0, help="Federal taxable income (CHF)"),
+    max_deduction: int = typer.Option(..., min=0, help="Max deduction to explore (CHF)"),
+    d_step: int = typer.Option(100, min=1, help="Deduction increment (CHF)"),
     pick: List[str] = typer.Option([], help="Codes to pick (multipliers)"),
     skip: List[str] = typer.Option([], help="Codes to skip (multipliers)"),
     out: str = typer.Option("scan.csv", help="Output CSV path"),
     json_out: bool = typer.Option(False, "--json", help="Print JSON instead of writing CSV"),
     include_local_marginal: bool = typer.Option(True, help="Compute local marginal % using Δ100"),
-    filing_status: str = typer.Option("single", help="Filing status: single or married_joint"),
+    filing_status: str = typer.Option("single", callback=lambda ctx, param, value: _validate_filing_status(value) if value else "single", help="Filing status: single or married_joint"),
 ):
     """
     Produce a dense table of values for deductions d = 0..max_deduction (step=d_step):
@@ -873,12 +901,12 @@ def validate(
 
 @app.command() 
 def compare_brackets(
-    year: int = typer.Option(...),
-    income: Optional[int] = typer.Option(None, help="Taxable income for both SG and Federal (CHF)"),
-    income_sg: Optional[int] = typer.Option(None, help="St. Gallen taxable income (CHF)"),
-    income_fed: Optional[int] = typer.Option(None, help="Federal taxable income (CHF)"),
-    deduction: int = typer.Option(0, "--deduction", help="Amount to deduct"),
-    filing_status: str = typer.Option("single", help="Filing status: single or married_joint"),
+    year: int = typer.Option(..., min=1900),
+    income: Optional[int] = typer.Option(None, min=0, help="Taxable income for both SG and Federal (CHF)"),
+    income_sg: Optional[int] = typer.Option(None, min=0, help="St. Gallen taxable income (CHF)"),
+    income_fed: Optional[int] = typer.Option(None, min=0, help="Federal taxable income (CHF)"),
+    deduction: int = typer.Option(0, "--deduction", min=0, help="Amount to deduct"),
+    filing_status: str = typer.Option("single", callback=lambda ctx, param, value: _validate_filing_status(value) if value else "single", help="Filing status: single or married_joint"),
 ):
     """Show which tax brackets apply before/after deduction.
     

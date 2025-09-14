@@ -13,7 +13,6 @@ Examples:
 import sys
 import subprocess
 from pathlib import Path
-import glob
 import shutil
 
 PROJECT_ROOT = Path(__file__).resolve().parent
@@ -85,6 +84,18 @@ def run_tests() -> int:
         print("❌ tests failed")
         return code
     print("✅ tests passed")
+    
+    # Build & reinstall as promised in docstring
+    dist = PROJECT_ROOT / "dist"
+    _clean_dist(dist)
+    _check_call([sys.executable, "-m", "pip", "install", "--upgrade", "build"])
+    _check_call([sys.executable, "-m", "build", "--sdist", "--wheel"])
+    wheels = sorted(dist.glob("*.whl"))
+    if not wheels:
+        print("❌ no wheel built")
+        return 1
+    _check_call([sys.executable, "-m", "pip", "install", "--force-reinstall", str(wheels[-1])])
+    print("📦 reinstalled from fresh wheel")
     return 0
 
 if __name__ == "__main__":

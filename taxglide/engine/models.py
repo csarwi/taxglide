@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from decimal import Decimal, ROUND_HALF_UP, getcontext
 from typing import List, Optional, Literal, Dict
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, ConfigDict
 
 getcontext().prec = 28
 
@@ -37,16 +37,17 @@ class FedSegment(BaseModel):
     per100: float
 
 class FedRoundCfg(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     per_100_step: bool = True
     step_size: int = 100
     step_mode: Literal["ceil", "floor"] = "ceil"
-    tax_round_to: int = 0
-    scope: Literal["as_official", "final_only"] = "as_official"
 
 class FederalConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     currency: Literal["CHF"]
     rounding: FedRoundCfg
     segments: List[FedSegment]
+    notes: Optional[str] = None
 
 class MultItem(BaseModel):
     name: str

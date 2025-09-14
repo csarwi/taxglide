@@ -13,7 +13,6 @@ def simple_tax_sg(income: Decimal, cfg: StGallenConfig) -> Decimal:
             return final_round(tax, cfg.rounding.tax_round_to)
     # progressive portion-of-bracket model
     tax = Decimal(0)
-    remaining = income
     for b in cfg.brackets:
         upper = b.lower + b.width
         if income <= b.lower:
@@ -66,6 +65,9 @@ def sg_bracket_info(income: Decimal | int, cfg: StGallenConfig):
         when the override is active (income > threshold), or
       - {'lower': int, 'upper': int, 'rate_percent': float}
         for the progressive brackets.
+    
+    Note: Brackets are displayed as (lower, upper] - income must be > lower and <= upper
+    to be considered within the bracket.
     """
     i = int(income)
     # Flat override active?

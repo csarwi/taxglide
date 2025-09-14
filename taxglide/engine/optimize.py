@@ -174,10 +174,15 @@ def optimize_deduction(
     eps = Decimal(100)
     y_best = best_rate["new_income"]
     r0 = calc_fn(y_best)
-    r1 = calc_fn(y_best - eps)  # safe: y_best >= 0 and eps <= y_best by construction
-    T0_best = _as_total(r0)
-    T1_best = _as_total(r1)
-    local_marginal_percent_at_best = float((T0_best - T1_best) / eps * 100)
+    # Guard against negative deltas when income is small
+    step_den = min(eps, y_best)
+    if step_den > 0:
+        r1 = calc_fn(y_best - step_den)
+        T0_best = _as_total(r0)
+        T1_best = _as_total(r1)
+        local_marginal_percent_at_best = float((T0_best - T1_best) / step_den * 100)
+    else:
+        local_marginal_percent_at_best = 0.0
 
     # -------- Optional federal 100-step nudge (from ROI-best) --------
     fed_now = _as_federal_maybe(r0)
@@ -185,7 +190,9 @@ def optimize_deduction(
     if fed_now is not None:
         fed_now = Decimal(fed_now)
         for k in range(1, 100):
-            r_prev = calc_fn(y_best - Decimal(k))  # k <= 99; safe
+            if y_best - Decimal(k) < 0:
+                break
+            r_prev = calc_fn(y_best - Decimal(k))
             fed_prev = _as_federal_maybe(r_prev)
             if fed_prev is None:
                 break
@@ -323,15 +330,15 @@ def optimize_deduction(
 
     return {
         "base_total": T0,
-        #"best_rate": {
-        #    **best_rate,
-        #    "savings_rate_percent": float(best_rate["savings_rate"] * 100),
-        #},
-        #"plateau_near_max_roi": plateau_range,   # full near-max band
+        "best_rate": {
+            **best_rate,
+            "savings_rate_percent": float(best_rate["savings_rate"] * 100),
+        },
+        "plateau_near_max_roi": plateau_range,   # full near-max band
         "sweet_spot": sweet_spot,
         "local_marginal_percent_at_best": local_marginal_percent_at_best,
         "local_marginal_percent_at_spot": local_marginal_percent_at_spot,
-        #"federal_100_nudge": nudge_diag,
+        "federal_100_nudge": nudge_diag,
     }
 
 

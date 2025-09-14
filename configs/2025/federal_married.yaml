@@ -3,8 +3,6 @@ rounding:
   per_100_step: true
   step_size: 100
   step_mode: floor
-  tax_round_to: 0
-  scope: as_official
 segments:
   - { from: 0,      to: 29700,  at_income: 0,      base_tax_at: 0.00,     per100: 0.00 }
   - { from: 29700,  to: 53400,  at_income: 29700,  base_tax_at: 0.00,     per100: 1.00 }

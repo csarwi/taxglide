@@ -1,6 +1,6 @@
 from decimal import Decimal, ROUND_DOWN
 from math import ceil, floor
-from typing import Tuple, Optional, Dict, Any
+from typing import Optional, Dict, Any
 from .models import FederalConfig, chf, FilingStatus
 from .rounding import final_round
 
