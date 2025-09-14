@@ -25,6 +25,22 @@ app = typer.Typer(help="Swiss tax CLI (SG + Federal), config driven")
 CONFIG_ROOT = Path(__file__).resolve().parents[1] / "configs"
 
 
+def _get_adaptive_tolerance_bp(income: int) -> float:
+    """Return income-adaptive tolerance in basis points.
+    
+    Lower incomes have steeper ROI curves and benefit from precise optimization.
+    Higher incomes have flatter ROI curves and need broader tolerance to find the true optimum.
+    """
+    if income < 50000:
+        return 10.0  # 0.1% - precise for steep curves
+    elif income < 80000:
+        return 25.0  # 0.25% - moderate tolerance
+    elif income < 120000:
+        return 50.0  # 0.5% - broader for flatter curves
+    else:
+        return 100.0  # 1.0% - wide tolerance for very flat curves
+
+
 def _resolve_incomes(
     income: Optional[int] = None,
     income_sg: Optional[int] = None, 
@@ -194,7 +210,7 @@ def optimize(
     pick: List[str] = typer.Option([], help="Codes to pick"),
     skip: List[str] = typer.Option([], help="Codes to skip"),
     json_out: bool = typer.Option(False, "--json"),
-    tolerance_bp: float = typer.Option(10.0, help="Near-max ROI tolerance in basis points"),
+    tolerance_bp: Optional[float] = typer.Option(None, help="Near-max ROI tolerance in basis points (auto-selected by income if not specified)"),
     filing_status: str = typer.Option("single", help="Filing status: single or married_joint"),
 ):
     """Find optimal deduction amounts.
@@ -223,6 +239,13 @@ def optimize(
     except ValueError as e:
         rprint({"error": str(e)})
         raise typer.Exit(code=2)
+    
+    # Determine tolerance: user-provided or income-adaptive
+    if tolerance_bp is None:
+        tolerance_bp = _get_adaptive_tolerance_bp(base_income)
+        tolerance_source = "auto-selected"
+    else:
+        tolerance_source = "user-specified"
 
     # Store original incomes for reference
     sg_income_decimal = Decimal(sg_income)
@@ -341,11 +364,29 @@ def optimize(
     out.pop("local_marginal_percent_at_spot", None)
     
     out = {k: coerce(v) for k, v in out.items()}
-
+    
+    # Add tolerance explanation
+    tolerance_explanation = {
+        "tolerance_used_bp": tolerance_bp,
+        "tolerance_percent": tolerance_bp / 100.0,
+        "tolerance_source": tolerance_source,
+        "explanation": f"Tolerance {tolerance_bp:.1f} basis points ({tolerance_bp/100:.2f}%) {tolerance_source} based on income {base_income:,} CHF. "
+                      f"This sets how close to the maximum ROI a deduction must be to be considered 'near-optimal'. "
+                      f"Higher incomes use wider tolerances because ROI curves are flatter at higher tax brackets."
+    }
+    
     if json_out:
+        # Include tolerance info in JSON output
+        out["tolerance_info"] = tolerance_explanation
         print(json.dumps(out, indent=2))
     else:
         rprint(out)
+        # Add tolerance note after main output
+        print(f"\n💡 Tolerance: {tolerance_bp:.1f} basis points ({tolerance_bp/100:.2f}%) {tolerance_source} for income {base_income:,} CHF")
+        print(f"   This determines how close to maximum ROI a deduction must be to be considered optimal.")
+        if tolerance_source == "auto-selected":
+            print(f"   Higher incomes automatically use wider tolerances due to flatter ROI curves.")
+        print(f"   Use --tolerance-bp to override (e.g., --tolerance-bp 25 for tighter precision).")
 
 
 @app.command()
