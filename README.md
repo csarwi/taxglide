@@ -1,27 +1,58 @@
 # TaxGlide 🇨🇭
 
-A comprehensive Swiss tax calculator and optimizer for **St. Gallen (SG) cantonal + Swiss federal taxes**. Built with configuration-driven tax models and advanced deduction optimization algorithms.
+A comprehensive Swiss tax calculator and optimizer for **St. Gallen (SG) cantonal + Swiss federal taxes**. Available as both a powerful CLI tool and a modern desktop GUI application. Built with configuration-driven tax models and advanced deduction optimization algorithms.
 
 Almost mainly written with ChatGPT-5 and Claude.
 
 ## Features
 
+### 💱 Core Tax Engine
 - **Accurate Swiss Tax Models**: Federal (marginal brackets) + St. Gallen (progressive + multipliers)
 - **Married Joint Filing Support**: Income splitting for married couples per Swiss tax law 🆕
 - **Separate Income Support**: Different taxable incomes for SG and Federal taxes 🆕
 - **Smart Deduction Optimization**: Find optimal deduction amounts using ROI analysis with plateau detection
-- **Enhanced Output**: Detailed income breakdowns when using separate SG/Federal incomes 🆕
 - **Flexible Multiplier System**: Handle cantonal, communal, fire service, and church taxes
-- **Rich CLI Interface**: Multiple commands for calculation, optimization, scanning, and visualization
 - **Configuration-Driven**: Easy to update tax rules via YAML files
+
+### 🖥️ Desktop GUI Application
+- **Modern Interface**: Beautiful Tauri-based desktop app with native performance
+- **Interactive Calculator**: Real-time tax calculations with detailed breakdowns
+- **Advanced Optimizer**: Visual deduction optimization with comprehensive results
+- **Interactive Scanner**: 🆕 **Sexy data table** with sorting, filtering, and search for exploring deduction scenarios
+- **Color-coded Results**: Visual indicators for ROI, tax savings, and marginal rates
+- **Responsive Design**: Clean, professional interface that scales beautifully
+- **Cross-platform**: Runs natively on Windows, macOS, and Linux
+
+### 💻 Command Line Interface  
+- **Rich CLI Commands**: Multiple commands for calculation, optimization, scanning, and visualization
+- **Enhanced Output**: Detailed income breakdowns when using separate SG/Federal incomes 🆕
 - **Export Capabilities**: JSON output and CSV scanning for analysis
 - **Backward Compatible**: All existing workflows continue to work unchanged
 
 ## Installation
 
+### CLI Installation
 ```bash
 pip install -e .
 ```
+
+### GUI Application
+
+#### Development Mode
+```bash
+cd gui
+npm install
+npm run tauri dev
+```
+
+#### Production Build
+```bash
+cd gui
+npm install
+npm run tauri build
+```
+
+The GUI provides an intuitive interface for all TaxGlide functionality with interactive tables, real-time calculations, and visual optimization results.
 
 ## Testing & Development
 
@@ -114,6 +145,13 @@ These official sources provide the legal foundation for TaxGlide's calculations 
 
 ## Quick Start
 
+### GUI Application
+1. **Launch the desktop app**: `npm run tauri dev` (from `gui/` directory)
+2. **Navigate to Calculator** for basic tax calculations
+3. **Use the Optimizer** to find optimal deduction amounts
+4. **Try the Scanner** for interactive deduction analysis with sortable tables
+
+### CLI Commands
 Calculate taxes for 80,000 CHF income in 2025:
 ```bash
 taxglide calc --year 2025 --income 80000
