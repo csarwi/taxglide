@@ -27,21 +27,103 @@ export interface CalcParams {
   skip: string[];
 }
 
+// Updated CalcResult based on actual backend response
 export interface CalcResult {
+  income_sg: number;
+  income_fed: number;
+  income: number | null;
+  federal: number;
+  sg_simple: number;
+  sg_after_mult: number;
+  total: number;
+  avg_rate: number;
+  marginal_total: number;
+  marginal_federal_hundreds: number;
+  picks: string[];
+  filing_status: string;
+  feuer_warning?: string;
+}
+
+// Optimize command parameters
+export interface OptimizeParams {
   year: number;
-  total_income: number;
-  total_tax: number;
-  effective_rate: number;
-  marginal_rate: number;
-  taxes: {
-    federal_income: number;
-    singapore_income: number;
-    us_social_security: number;
-    us_medicare: number;
-    singapore_cpf: number;
+  income?: number;
+  income_sg?: number;
+  income_fed?: number;
+  filing_status?: string;
+  pick: string[];
+  skip: string[];
+  max_deduction?: number;
+}
+
+// Optimize command result based on contract documentation
+export interface OptimizeResult {
+  base_total: number;
+  best_rate: {
+    deduction: number;
+    new_income: number;
+    total: number;
+    saved: number;
+    savings_rate: number;
+    savings_rate_percent: number;
   };
-  warnings: string[];
+  plateau_near_max_roi: {
+    min_d: number;
+    max_d: number;
+    roi_min_percent: number;
+    roi_max_percent: number;
+    tolerance_bp: number;
+  };
+  sweet_spot: {
+    deduction: number;
+    new_income: number;
+    total_tax_at_spot: number;
+    tax_saved_absolute: number;
+    tax_saved_percent: number;
+    federal_tax_at_spot: number;
+    sg_tax_at_spot: number;
+    baseline: {
+      total_tax: number;
+      federal_tax: number;
+      sg_tax: number;
+    };
+    explanation: string;
+    income_details: {
+      original_sg: number;
+      original_fed: number;
+      after_deduction_sg: number;
+      after_deduction_fed: number;
+    };
+    multipliers: {
+      applied: string[];
+      total_rate: number;
+      feuer_warning?: string;
+    };
+    optimization_summary: {
+      roi_percent: number;
+      plateau_width_chf: number;
+      federal_bracket_changed: boolean;
+      marginal_rate_percent: number;
+    };
+  };
+  federal_100_nudge: {
+    nudge_chf: number;
+    estimated_federal_saving: number;
+  };
+  adaptive_retry_used: {
+    original_tolerance_bp: number;
+    chosen_tolerance_bp: number;
+    roi_improvement: number;
+    utilization_improvement: number;
+    selection_reason: string;
+  };
   multipliers_applied: string[];
+  tolerance_info: {
+    tolerance_used_bp: number;
+    tolerance_percent: number;
+    tolerance_source: string;
+    explanation: string;
+  };
 }
 
 // Context type
@@ -51,6 +133,7 @@ interface CliContextType {
   error: string | null;
   initializeCli: () => Promise<void>;
   calculate: (params: CalcParams) => Promise<CalcResult>;
+  optimize: (params: OptimizeParams) => Promise<OptimizeResult>;
   isReady: boolean;
 }
 
@@ -117,6 +200,24 @@ export const CliProvider: React.FC<CliProviderProps> = ({ children }) => {
     }
   };
 
+  // Optimize tax strategy
+  const optimize = async (params: OptimizeParams): Promise<OptimizeResult> => {
+    if (!isReady) {
+      throw new Error('CLI is not ready. Please initialize first.');
+    }
+
+    try {
+      console.log('Optimizing tax strategy with params:', params);
+      const result: OptimizeResult = await invoke('optimize', { params });
+      console.log('Optimization completed:', result);
+      return result;
+    } catch (err) {
+      const errorMessage = err as string;
+      console.error('Tax optimization failed:', errorMessage);
+      throw new Error(errorMessage);
+    }
+  };
+
   // Get CLI status and auto-initialize on mount
   useEffect(() => {
     const getInitialStatusAndConnect = async () => {
@@ -172,6 +273,7 @@ export const CliProvider: React.FC<CliProviderProps> = ({ children }) => {
     error,
     initializeCli,
     calculate,
+    optimize,
     isReady,
   };
 

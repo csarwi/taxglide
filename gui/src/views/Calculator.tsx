@@ -2,6 +2,12 @@ import React, { useState } from 'react';
 import { useCli, CalcParams, CalcResult } from '../contexts/CliContext';
 import { theme, createButtonStyle, createCardStyle, createInputStyle } from '../theme';
 
+// Helper function to extract Feuerwehr amount from warning message
+const extractFeuerAmount = (warning: string): number | null => {
+  const match = warning.match(/\+(\d+)\s+CHF/);
+  return match ? parseInt(match[1]) : null;
+};
+
 const Calculator: React.FC = () => {
   const { calculate, isReady } = useCli();
   
@@ -10,7 +16,6 @@ const Calculator: React.FC = () => {
   // Form state
   const [formData, setFormData] = useState<CalcParams>({
     year: 2025,
-    income: 80000,
     filing_status: '',
     pick: [],
     skip: [],
@@ -237,7 +242,7 @@ const Calculator: React.FC = () => {
             >
               <option value="">-- Select Filing Status --</option>
               <option value="single">Single</option>
-              <option value="married">Married</option>
+              <option value="married_joint">Married</option>
             </select>
           </div>
 
@@ -402,7 +407,13 @@ const Calculator: React.FC = () => {
                   color: theme.colors.textSecondary,
                   lineHeight: '1.5',
                 }}>
-                  An additional Feuerwehr (Fire Department) tax of approximately <strong>CHF 725</strong> may apply, depending on your municipality. This is not included in the calculation above.
+                  {(() => {
+                    const feuerAmount = extractFeuerAmount(result.feuer_warning || '');
+                    if (feuerAmount) {
+                      return `An additional Feuerwehr (Fire Department) tax of approximately CHF ${feuerAmount.toLocaleString()} may apply, depending on your municipality. This is not included in the calculation above.`;
+                    }
+                    return 'Additional Feuerwehr (Fire Department) tax may apply, depending on your municipality. This is not included in the calculation above.';
+                  })()}
                 </div>
               </div>
             )}
