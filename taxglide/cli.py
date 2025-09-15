@@ -6,6 +6,9 @@ import json
 import csv
 import typer
 from rich import print as rprint
+import sys
+import platform
+from datetime import datetime, timezone
 
 from .io.loader import load_configs, load_configs_with_filing_status
 from .engine.stgallen import simple_tax_sg, sg_bracket_info, simple_tax_sg_with_filing_status
@@ -26,6 +29,20 @@ CONFIG_ROOT = Path(__file__).resolve().parents[1] / "configs"
 
 VALID_FILING_STATUSES = {"single", "married_joint"}
 
+# Schema and version constants
+SCHEMA_VERSION = "1.0"
+TAXGLIDE_VERSION = "0.3.0"  # Should match pyproject.toml
+
+# Error codes for JSON responses
+ERROR_CODES = {
+    "INVALID_INPUT": 2,
+    "CALCULATION_ERROR": 3,
+    "FILE_NOT_FOUND": 4,
+    "VALIDATION_ERROR": 5,
+    "INTERNAL_ERROR": 8,
+    "SCHEMA_MISMATCH": 9,
+}
+
 def _create_console_with_imports():
     """Create Rich console with all required imports."""
     from rich.console import Console
@@ -34,6 +51,80 @@ def _create_console_with_imports():
     from rich.table import Table
     
     return Console(), Panel, Text, Table
+
+
+def _create_json_response(data: Any, success: bool = True) -> Dict[str, Any]:
+    """Create standardized JSON response envelope.
+    
+    Args:
+        data: The response data to wrap
+        success: Whether this is a success response
+        
+    Returns:
+        Dict with standardized response envelope
+    """
+    return {
+        "success": success,
+        "schema_version": SCHEMA_VERSION,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "data": data
+    }
+
+
+def _create_json_error(code: str, message: str, details: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    """Create standardized JSON error response.
+    
+    Args:
+        code: Error code from ERROR_CODES
+        message: Human-readable error message
+        details: Optional additional error details
+        
+    Returns:
+        Dict with standardized error response
+    """
+    error_data = {
+        "code": code,
+        "message": message
+    }
+    if details:
+        error_data["details"] = details
+        
+    return {
+        "success": False,
+        "schema_version": SCHEMA_VERSION,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "error": error_data
+    }
+
+
+def _handle_json_error(error: Exception, json_mode: bool = False) -> None:
+    """Handle exceptions and output appropriate error format.
+    
+    Args:
+        error: The exception that occurred
+        json_mode: Whether to output JSON error format
+    """
+    if isinstance(error, ValueError):
+        if json_mode:
+            error_response = _create_json_error("INVALID_INPUT", str(error))
+            print(json.dumps(error_response, indent=2))
+        else:
+            rprint({"error": str(error)})
+        raise typer.Exit(code=ERROR_CODES["INVALID_INPUT"])
+    elif isinstance(error, FileNotFoundError):
+        if json_mode:
+            error_response = _create_json_error("FILE_NOT_FOUND", str(error))
+            print(json.dumps(error_response, indent=2))
+        else:
+            rprint({"error": str(error)})
+        raise typer.Exit(code=ERROR_CODES["FILE_NOT_FOUND"])
+    else:
+        if json_mode:
+            error_response = _create_json_error("INTERNAL_ERROR", f"Unexpected error: {str(error)}")
+            print(json.dumps(error_response, indent=2))
+        else:
+            rprint({"error": str(error)})
+        raise typer.Exit(code=ERROR_CODES["INTERNAL_ERROR"])
 
 
 def _print_multiplier_info(console, Text, multiplier_codes: List[str], mult_cfg, sg_simple: float = None):
@@ -432,6 +523,45 @@ def _calc_once_separate(
 
 
 @app.command()
+def version(
+    json_out: bool = typer.Option(False, "--json", help="Output JSON format"),
+    schema_version: bool = typer.Option(False, "--schema-version", help="Include schema version information"),
+):
+    """Show version information.
+    
+    Use --json for machine-readable output.
+    Use --schema-version to include schema compatibility information.
+    """
+    try:
+        version_data = {
+            "version": TAXGLIDE_VERSION,
+            "platform": platform.system().lower()
+        }
+        
+        if schema_version:
+            version_data["schema_version"] = SCHEMA_VERSION
+            version_data["build_date"] = datetime.now(timezone.utc).isoformat()
+            
+        if json_out:
+            response = _create_json_response(version_data)
+            print(json.dumps(response, indent=2))
+        else:
+            console, Panel, Text, _ = _create_console_with_imports()
+            version_text = Text()
+            version_text.append(f"TaxGlide version {TAXGLIDE_VERSION}\n", style="bold green")
+            version_text.append(f"Platform: {platform.system()}\n")
+            
+            if schema_version:
+                version_text.append(f"Schema version: {SCHEMA_VERSION}\n", style="cyan")
+                version_text.append(f"Build date: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}", style="dim")
+            
+            console.print(Panel(version_text, title="Version Information", border_style="blue"))
+            
+    except Exception as e:
+        _handle_json_error(e, json_out)
+
+
+@app.command()
 def calc(
     year: int = typer.Option(..., min=1900, help="Tax year, e.g., 2025"),
     income: Optional[int] = typer.Option(None, min=0, help="Taxable income for both SG and Federal (CHF)"),
@@ -455,16 +585,25 @@ def calc(
     try:
         sg_income, fed_income = _resolve_incomes(income, income_sg, income_fed)
     except ValueError as e:
-        rprint({"error": str(e)})
-        raise typer.Exit(code=2)
+        _handle_json_error(e, json_out)
+        return
     
     # auto-pick defaults
-    _, _, mult_cfg = load_configs(CONFIG_ROOT, year)
+    try:
+        _, _, mult_cfg = load_configs(CONFIG_ROOT, year)
+    except Exception as e:
+        _handle_json_error(e, json_out)
+        return
+        
     default_picks = [i.code for i in mult_cfg.items if i.default_selected]
     codes = set(default_picks) | set(pick)
     codes -= set(skip)
 
-    res = _calc_once_separate(year, sg_income, fed_income, sorted(codes), filing_status)
+    try:
+        res = _calc_once_separate(year, sg_income, fed_income, sorted(codes), filing_status)
+    except Exception as e:
+        _handle_json_error(e, json_out)
+        return
     
     # Add FEUER warning if not selected (simplified)
     feuer_item = next((item for item in mult_cfg.items if item.code == 'FEUER'), None)
@@ -475,7 +614,8 @@ def calc(
         res["feuer_warning"] = f"⚠️ Missing FEUER tax: +{potential_feuer_tax:.0f} CHF (add --pick FEUER)"
     
     if json_out:
-        print(json.dumps(res, indent=2))
+        response = _create_json_response(res)
+        print(json.dumps(response, indent=2))
     else:
         # Clean, user-friendly output for terminal use - pass mult_cfg to fix multiplier display bug
         _print_calculation_result(res, mult_cfg)
@@ -511,10 +651,14 @@ def optimize(
     try:
         sg_income, fed_income = _resolve_incomes(income, income_sg, income_fed)
     except ValueError as e:
-        rprint({"error": str(e)})
-        raise typer.Exit(code=2)
+        _handle_json_error(e, json_out)
+        return
     
-    sg_cfg, fed_cfg, mult_cfg = load_configs_with_filing_status(CONFIG_ROOT, year, filing_status)
+    try:
+        sg_cfg, fed_cfg, mult_cfg = load_configs_with_filing_status(CONFIG_ROOT, year, filing_status)
+    except Exception as e:
+        _handle_json_error(e, json_out)
+        return
     default_picks = [i.code for i in mult_cfg.items if i.default_selected]
     codes = set(default_picks) | set(pick)
     codes -= set(skip)
@@ -524,8 +668,8 @@ def optimize(
     try:
         validate_optimization_inputs(Decimal(base_income), max_deduction, 100, step)
     except ValueError as e:
-        rprint({"error": str(e)})
-        raise typer.Exit(code=2)
+        _handle_json_error(e, json_out)
+        return
     
     # Determine tolerance: user-provided or income-adaptive
     if tolerance_bp is None:
@@ -708,7 +852,8 @@ def optimize(
                           f"Higher incomes use wider tolerances because ROI curves are flatter at higher tax brackets."
         }
         out["tolerance_info"] = tolerance_explanation
-        print(json.dumps(out, indent=2))
+        response = _create_json_response(out)
+        print(json.dumps(response, indent=2))
     else:
         # Clean, user-friendly output for terminal use
         _print_optimization_result(out, tolerance_bp, tolerance_source, base_income, max_deduction)
@@ -838,10 +983,14 @@ def scan(
     try:
         sg_income, fed_income = _resolve_incomes(income, income_sg, income_fed)
     except ValueError as e:
-        rprint({"error": str(e)})
-        raise typer.Exit(code=2)
+        _handle_json_error(e, json_out)
+        return
         
-    sg_cfg, fed_cfg, mult_cfg = load_configs_with_filing_status(CONFIG_ROOT, year, filing_status)
+    try:
+        sg_cfg, fed_cfg, mult_cfg = load_configs_with_filing_status(CONFIG_ROOT, year, filing_status)
+    except Exception as e:
+        _handle_json_error(e, json_out)
+        return
     default_picks = [i.code for i in mult_cfg.items if i.default_selected]
     codes = set(default_picks) | set(pick)
     codes -= set(skip)
@@ -852,8 +1001,8 @@ def scan(
     try:
         validate_optimization_inputs(Decimal(base_income), max_deduction, 0, max(1, d_step))
     except ValueError as e:
-        rprint({"error": str(e)})
-        raise typer.Exit(code=2)
+        _handle_json_error(e, json_out)
+        return
 
     # Helper to compute totals with separate SG and Federal incomes
     def calc_all(sg_inc: Decimal, fed_inc: Decimal):
@@ -919,7 +1068,8 @@ def scan(
         rows.append(row_data)
 
     if json_out:
-        print(json.dumps(rows, indent=2))
+        response = _create_json_response(rows)
+        print(json.dumps(response, indent=2))
         return
 
     # write CSV
@@ -948,14 +1098,25 @@ def scan(
 @app.command()
 def validate(
     year: int = typer.Option(..., help="Tax year to validate"),
+    json_out: bool = typer.Option(False, "--json", help="Output JSON format"),
 ):
     """Validate configuration files for given year."""
     try:
         sg_cfg, fed_cfg, mult_cfg = load_configs(CONFIG_ROOT, year)
-        rprint({"status": "valid", "year": year, "message": "All configurations valid"})
+        result_data = {"status": "valid", "year": year, "message": "All configurations valid"}
+        
+        if json_out:
+            response = _create_json_response(result_data)
+            print(json.dumps(response, indent=2))
+        else:
+            rprint(result_data)
     except Exception as e:
-        rprint({"status": "invalid", "year": year, "error": str(e)})
-        raise typer.Exit(code=1)
+        if json_out:
+            error_response = _create_json_error("VALIDATION_ERROR", str(e), {"year": year})
+            print(json.dumps(error_response, indent=2))
+        else:
+            rprint({"status": "invalid", "year": year, "error": str(e)})
+        raise typer.Exit(code=ERROR_CODES["VALIDATION_ERROR"])
 
 @app.command() 
 def compare_brackets(
@@ -964,6 +1125,7 @@ def compare_brackets(
     income_sg: Optional[int] = typer.Option(None, min=0, help="St. Gallen taxable income (CHF)"),
     income_fed: Optional[int] = typer.Option(None, min=0, help="Federal taxable income (CHF)"),
     deduction: int = typer.Option(0, "--deduction", min=0, help="Amount to deduct"),
+    json_out: bool = typer.Option(False, "--json", help="Output JSON format"),
     filing_status: str = typer.Option("single", callback=lambda ctx, param, value: _validate_filing_status(value) if value else "single", help="Filing status: single or married_joint"),
 ):
     """Show which tax brackets apply before/after deduction.
@@ -975,10 +1137,14 @@ def compare_brackets(
     try:
         sg_income, fed_income = _resolve_incomes(income, income_sg, income_fed)
     except ValueError as e:
-        rprint({"error": str(e)})
-        raise typer.Exit(code=2)
+        _handle_json_error(e, json_out)
+        return
         
-    sg_cfg, fed_cfg, mult_cfg = load_configs_with_filing_status(CONFIG_ROOT, year, filing_status)
+    try:
+        sg_cfg, fed_cfg, mult_cfg = load_configs_with_filing_status(CONFIG_ROOT, year, filing_status)
+    except Exception as e:
+        _handle_json_error(e, json_out)
+        return
     
     # Original incomes
     original_sg_income = chf(sg_income)
@@ -996,7 +1162,7 @@ def compare_brackets(
     sg_before = sg_bracket_info(original_sg_income, sg_cfg)
     sg_after = sg_bracket_info(adjusted_sg_income, sg_cfg)
     
-    rprint({
+    result_data = {
         "original_sg_income": sg_income,
         "original_fed_income": fed_income,
         "adjusted_sg_income": float(adjusted_sg_income),
@@ -1008,4 +1174,10 @@ def compare_brackets(
         "sg_bracket_before": sg_before,
         "sg_bracket_after": sg_after,
         "sg_bracket_changed": sg_before != sg_after,
-    })
+    }
+    
+    if json_out:
+        response = _create_json_response(result_data)
+        print(json.dumps(response, indent=2))
+    else:
+        rprint(result_data)
