@@ -50,38 +50,76 @@ function TauriTest() {
     }
   };
 
+  const buttonStyle = {
+    marginRight: "10px",
+    padding: "8px 16px",
+    backgroundColor: loading ? "#ccc" : "#007acc",
+    color: "white",
+    border: "none",
+    borderRadius: "4px",
+    cursor: loading ? "not-allowed" : "pointer",
+    fontSize: "14px"
+  };
+
   return (
-    <div style={{ padding: "20px", fontFamily: "monospace", border: "2px solid #ccc" }}>
-      <h3>Tauri Communication Test</h3>
+    <div style={{ 
+      padding: "20px", 
+      fontFamily: "monospace", 
+      border: "2px solid #007acc",
+      borderRadius: "8px",
+      backgroundColor: "#f8f9fa",
+      color: "#333"
+    }}>
+      <h3 style={{ color: "#007acc", marginTop: 0 }}>🔧 Tauri Communication Test</h3>
       
-      <div style={{ marginBottom: "10px" }}>
-        <button onClick={testGreet} disabled={loading} style={{ marginRight: "10px" }}>
-          Test Greet
+      <div style={{ marginBottom: "15px" }}>
+        <button onClick={testGreet} disabled={loading} style={buttonStyle}>
+          {loading ? "⏳" : "✉️"} Test Greet
         </button>
-        <button onClick={testIsCliReady} disabled={loading} style={{ marginRight: "10px" }}>
-          Test CLI Ready
+        <button onClick={testIsCliReady} disabled={loading} style={buttonStyle}>
+          {loading ? "⏳" : "❓"} Test CLI Ready
         </button>
-        <button onClick={testInitCli} disabled={loading}>
-          Test Init CLI
+        <button onClick={testInitCli} disabled={loading} style={buttonStyle}>
+          {loading ? "⏳" : "🚀"} Test Init CLI
         </button>
       </div>
 
-      {loading && <div style={{ color: "blue" }}>Loading...</div>}
+      {loading && (
+        <div style={{ 
+          color: "#007acc", 
+          fontWeight: "bold",
+          marginBottom: "10px",
+          display: "flex",
+          alignItems: "center"
+        }}>
+          <span style={{ marginRight: "8px" }}>⏳</span>
+          Processing...
+        </div>
+      )}
       
       <div style={{ 
         marginTop: "10px", 
-        padding: "10px", 
-        backgroundColor: "#f5f5f5", 
-        border: "1px solid #ddd",
+        padding: "15px", 
+        backgroundColor: "#ffffff", 
+        border: "2px solid #e9ecef",
+        borderRadius: "6px",
         whiteSpace: "pre-wrap",
-        minHeight: "100px"
+        minHeight: "120px",
+        color: "#333",
+        fontFamily: "'Courier New', monospace",
+        fontSize: "13px"
       }}>
-        <strong>Result:</strong><br />
-        {result || "(no result yet)"}
+        <strong style={{ color: "#007acc" }}>📋 Result:</strong><br /><br />
+        {result || <em style={{ color: "#6c757d" }}>(no result yet - click a button to test)</em>}
       </div>
 
-      <div style={{ marginTop: "10px", fontSize: "12px", color: "#666" }}>
-        Check the browser console (F12) for detailed logs.
+      <div style={{ 
+        marginTop: "10px", 
+        fontSize: "12px", 
+        color: "#6c757d",
+        fontStyle: "italic"
+      }}>
+        💡 Tip: Check the browser console (F12) for detailed logs.
       </div>
     </div>
   );

@@ -5,6 +5,8 @@ interface VersionInfo {
   version: string;
   schema_version: string;
   build_timestamp: string;
+  build_date: string;
+  platform: string;
   supported_years: number[];
 }
 
@@ -111,94 +113,194 @@ function CliTester() {
     }
   };
 
+  const buttonStyle = {
+    padding: "10px 18px",
+    marginRight: "12px",
+    marginBottom: "8px",
+    backgroundColor: loading ? "#6c757d" : "#28a745",
+    color: "white",
+    border: "none",
+    borderRadius: "6px",
+    cursor: loading ? "not-allowed" : "pointer",
+    fontSize: "14px",
+    fontWeight: "500",
+    minWidth: "120px"
+  };
+
+  const disabledButtonStyle = {
+    ...buttonStyle,
+    backgroundColor: "#6c757d",
+    cursor: "not-allowed"
+  };
+
   return (
-    <div style={{ padding: "20px", fontFamily: "monospace" }}>
-      <h2>CLI Integration Tester</h2>
+    <div style={{ 
+      padding: "20px", 
+      fontFamily: "system-ui, -apple-system, sans-serif",
+      backgroundColor: "#ffffff",
+      border: "2px solid #28a745",
+      borderRadius: "10px",
+      color: "#333"
+    }}>
+      <h2 style={{ color: "#28a745", marginTop: 0, marginBottom: "20px" }}>
+        🧮 CLI Integration Tester
+      </h2>
       
-      <div style={{ marginBottom: "20px" }}>
-        <button onClick={initializeCli} disabled={loading}>
-          Initialize CLI
+      <div style={{ marginBottom: "25px" }}>
+        <button 
+          onClick={initializeCli} 
+          disabled={loading} 
+          style={loading ? disabledButtonStyle : buttonStyle}
+        >
+          {loading ? "⏳ Working..." : "🚀 Initialize CLI"}
         </button>
-        <button onClick={getCliStatus} disabled={loading} style={{ marginLeft: "10px" }}>
-          Get Status
+        <button 
+          onClick={getCliStatus} 
+          disabled={loading} 
+          style={loading ? disabledButtonStyle : buttonStyle}
+        >
+          {loading ? "⏳ Working..." : "📊 Get Status"}
         </button>
         <button 
           onClick={testCalc} 
           disabled={loading || !status?.initialized} 
-          style={{ marginLeft: "10px" }}
+          style={(loading || !status?.initialized) ? disabledButtonStyle : buttonStyle}
         >
-          Test Calc
+          {loading ? "⏳ Working..." : "🧮 Test Calc"}
         </button>
       </div>
 
       {loading && (
-        <div style={{ color: "blue", marginBottom: "10px" }}>
-          Loading...
+        <div style={{ 
+          color: "#007acc", 
+          fontWeight: "bold",
+          marginBottom: "15px",
+          padding: "12px",
+          backgroundColor: "#e3f2fd",
+          border: "2px solid #007acc",
+          borderRadius: "6px",
+          display: "flex",
+          alignItems: "center"
+        }}>
+          <span style={{ marginRight: "8px" }}>⏳</span>
+          Processing request...
         </div>
       )}
 
       {error && (
-        <div style={{ color: "red", marginBottom: "10px", backgroundColor: "#fee", padding: "10px", border: "1px solid #fcc" }}>
-          <strong>Error:</strong> {error}
+        <div style={{ 
+          color: "#721c24", 
+          marginBottom: "15px", 
+          backgroundColor: "#f8d7da", 
+          padding: "15px", 
+          border: "2px solid #dc3545",
+          borderRadius: "6px"
+        }}>
+          <strong>❌ Error:</strong> {error}
         </div>
       )}
 
       {status && (
-        <div style={{ marginBottom: "20px", backgroundColor: "#f0f0f0", padding: "10px", border: "1px solid #ccc" }}>
-          <h3>CLI Status</h3>
-          <p><strong>Initialized:</strong> {status.initialized ? "Yes" : "No"}</p>
+        <div style={{ 
+          marginBottom: "25px", 
+          backgroundColor: status.initialized ? "#d4edda" : "#f8d7da", 
+          padding: "18px", 
+          border: `2px solid ${status.initialized ? "#28a745" : "#dc3545"}`,
+          borderRadius: "8px"
+        }}>
+          <h3 style={{ 
+            color: status.initialized ? "#155724" : "#721c24", 
+            marginTop: 0,
+            marginBottom: "12px"
+          }}>
+            {status.initialized ? "✅" : "❌"} CLI Status
+          </h3>
+          <p style={{ margin: "8px 0", fontSize: "14px" }}>
+            <strong>Status:</strong> 
+            <span style={{ 
+              color: status.initialized ? "#28a745" : "#dc3545",
+              fontWeight: "bold",
+              marginLeft: "8px"
+            }}>
+              {status.initialized ? "🟢 Ready" : "🔴 Not Ready"}
+            </span>
+          </p>
           {status.version_info && (
-            <div>
-              <p><strong>Version:</strong> {status.version_info.version}</p>
-              <p><strong>Schema Version:</strong> {status.version_info.schema_version}</p>
-              <p><strong>Build Time:</strong> {status.version_info.build_timestamp}</p>
-              <p><strong>Supported Years:</strong> {status.version_info.supported_years.join(", ")}</p>
+            <div style={{ fontSize: "13px", color: "#495057" }}>
+              <p style={{ margin: "6px 0" }}><strong>Version:</strong> {status.version_info.version}</p>
+              <p style={{ margin: "6px 0" }}><strong>Schema:</strong> {status.version_info.schema_version}</p>
+              <p style={{ margin: "6px 0" }}><strong>Platform:</strong> {status.version_info.platform}</p>
+              <p style={{ margin: "6px 0" }}><strong>Build:</strong> {new Date(status.version_info.build_date || status.version_info.build_timestamp).toLocaleString()}</p>
+              <p style={{ margin: "6px 0" }}><strong>Supported Years:</strong> {status.version_info.supported_years.join(", ")}</p>
             </div>
           )}
           {status.error && (
-            <p style={{ color: "red" }}><strong>Error:</strong> {status.error}</p>
+            <p style={{ color: "#721c24", margin: "8px 0", fontWeight: "bold" }}>
+              <strong>❌ Error:</strong> {status.error}
+            </p>
           )}
         </div>
       )}
 
       {calcResult && (
-        <div style={{ backgroundColor: "#e8f5e8", padding: "10px", border: "1px solid #4c8a3b" }}>
-          <h3>Calc Result</h3>
-          <p><strong>Year:</strong> {calcResult.year}</p>
-          <p><strong>Total Income:</strong> ${calcResult.total_income.toLocaleString()}</p>
-          <p><strong>Total Tax:</strong> ${calcResult.total_tax.toLocaleString()}</p>
-          <p><strong>Effective Rate:</strong> {(calcResult.effective_rate * 100).toFixed(2)}%</p>
-          <p><strong>Marginal Rate:</strong> {(calcResult.marginal_rate * 100).toFixed(2)}%</p>
+        <div style={{ 
+          backgroundColor: "#d1ecf1", 
+          padding: "20px", 
+          border: "2px solid #bee5eb",
+          borderRadius: "8px",
+          color: "#0c5460"
+        }}>
+          <h3 style={{ color: "#0c5460", marginTop: 0, marginBottom: "15px" }}>
+            📊 Tax Calculation Results
+          </h3>
           
-          <h4>Tax Breakdown</h4>
-          <ul>
-            <li>Federal Income: ${calcResult.taxes.federal_income.toLocaleString()}</li>
-            <li>Singapore Income: ${calcResult.taxes.singapore_income.toLocaleString()}</li>
-            <li>US Social Security: ${calcResult.taxes.us_social_security.toLocaleString()}</li>
-            <li>US Medicare: ${calcResult.taxes.us_medicare.toLocaleString()}</li>
-            <li>Singapore CPF: ${calcResult.taxes.singapore_cpf.toLocaleString()}</li>
-          </ul>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "15px", marginBottom: "20px" }}>
+            <div>
+              <p style={{ margin: "8px 0", fontSize: "14px" }}><strong>Year:</strong> {calcResult.year}</p>
+              <p style={{ margin: "8px 0", fontSize: "14px" }}><strong>Total Income:</strong> ${calcResult.total_income.toLocaleString()}</p>
+              <p style={{ margin: "8px 0", fontSize: "14px" }}><strong>Total Tax:</strong> ${calcResult.total_tax.toLocaleString()}</p>
+            </div>
+            <div>
+              <p style={{ margin: "8px 0", fontSize: "14px" }}><strong>Effective Rate:</strong> {(calcResult.effective_rate * 100).toFixed(2)}%</p>
+              <p style={{ margin: "8px 0", fontSize: "14px" }}><strong>Marginal Rate:</strong> {(calcResult.marginal_rate * 100).toFixed(2)}%</p>
+            </div>
+          </div>
+          
+          <h4 style={{ color: "#0c5460", marginBottom: "10px" }}>💰 Tax Breakdown</h4>
+          <div style={{ 
+            display: "grid", 
+            gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", 
+            gap: "8px",
+            fontSize: "13px",
+            marginBottom: "15px"
+          }}>
+            <div>• Federal Income: ${calcResult.taxes.federal_income.toLocaleString()}</div>
+            <div>• Singapore Income: ${calcResult.taxes.singapore_income.toLocaleString()}</div>
+            <div>• US Social Security: ${calcResult.taxes.us_social_security.toLocaleString()}</div>
+            <div>• US Medicare: ${calcResult.taxes.us_medicare.toLocaleString()}</div>
+            <div>• Singapore CPF: ${calcResult.taxes.singapore_cpf.toLocaleString()}</div>
+          </div>
           
           {calcResult.warnings.length > 0 && (
-            <>
-              <h4>Warnings</h4>
-              <ul>
+            <div style={{ marginBottom: "15px" }}>
+              <h4 style={{ color: "#856404", marginBottom: "8px" }}>⚠️ Warnings</h4>
+              <div style={{ fontSize: "13px" }}>
                 {calcResult.warnings.map((warning, i) => (
-                  <li key={i} style={{ color: "orange" }}>{warning}</li>
+                  <div key={i} style={{ color: "#856404", margin: "4px 0" }}>• {warning}</div>
                 ))}
-              </ul>
-            </>
+              </div>
+            </div>
           )}
           
           {calcResult.multipliers_applied.length > 0 && (
-            <>
-              <h4>Multipliers Applied</h4>
-              <ul>
+            <div>
+              <h4 style={{ color: "#0c5460", marginBottom: "8px" }}>🔧 Multipliers Applied</h4>
+              <div style={{ fontSize: "13px" }}>
                 {calcResult.multipliers_applied.map((multiplier, i) => (
-                  <li key={i}>{multiplier}</li>
+                  <div key={i} style={{ margin: "4px 0" }}>• {multiplier}</div>
                 ))}
-              </ul>
-            </>
+              </div>
+            </div>
           )}
         </div>
       )}
