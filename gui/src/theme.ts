@@ -3,6 +3,8 @@ export const theme = {
   colors: {
     primary: '#007acc',
     primaryHover: '#005a99',
+    secondary: '#6c757d',
+    secondaryHover: '#495057',
     success: '#28a745',
     successHover: '#218838',
     warning: '#ffc107',

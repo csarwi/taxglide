@@ -1,8 +1,24 @@
-# TaxGlide Nuitka Build Script
-# Centralized configuration for building optimized executable
+# TaxGlide Build Script
+# Centralized configuration for building CLI and/or GUI executables
+# Usage:
+#   .\build_executable.ps1                  # Build both CLI and GUI (default)
+#   .\build_executable.ps1 -BuildTarget cli  # Build CLI only
+#   .\build_executable.ps1 -BuildTarget gui  # Build GUI only
+#   .\build_executable.ps1 -BuildTarget both # Build both (explicit)
+
+param(
+    [Parameter(Mandatory=$false)]
+    [ValidateSet('cli', 'gui', 'both')]
+    [string]$BuildTarget = 'both'
+)
 
 # Configuration - All paths and settings in one place
 $BuildConfig = @{
+    # Build targets
+    BuildTarget = $BuildTarget
+    BuildCLI = ($BuildTarget -eq 'cli' -or $BuildTarget -eq 'both')
+    BuildGUI = ($BuildTarget -eq 'gui' -or $BuildTarget -eq 'both')
+    
     # Input/Output paths
     MainScript = "main.py"
     OutputDir = "dist"
@@ -19,6 +35,10 @@ $BuildConfig = @{
     
     # Build cleanup
     CleanBuild = $true
+    
+    # GUI build settings
+    GuiDir = "gui"
+    GuiOutputName = "taxglide_gui"
     
     # Release packaging settings
     CreateRelease = $true
@@ -69,7 +89,7 @@ function Get-ProjectVersion {
 # Function to create release package
 function Create-ReleasePackage {
     param(
-        [string]$ExecutablePath,
+        [array]$ExecutablePaths,
         [string]$Version,
         [string]$ReleaseDir,
         [array]$AdditionalFiles
@@ -99,12 +119,14 @@ function Create-ReleasePackage {
     # Create fresh release directory
     New-Item -ItemType Directory -Path $VersionedReleasePath -Force | Out-Null
     
-    # Copy executable
-    if (Test-Path $ExecutablePath) {
-        Copy-Item $ExecutablePath $VersionedReleasePath
-        Write-Host "Copied executable: $(Split-Path $ExecutablePath -Leaf)" -ForegroundColor Green
-    } else {
-        throw "Executable not found: $ExecutablePath"
+    # Copy all executables
+    foreach ($ExecutablePath in $ExecutablePaths) {
+        if (Test-Path $ExecutablePath) {
+            Copy-Item $ExecutablePath $VersionedReleasePath
+            Write-Host "Copied executable: $(Split-Path $ExecutablePath -Leaf)" -ForegroundColor Green
+        } else {
+            Write-Host "Warning: Executable not found: $ExecutablePath" -ForegroundColor Yellow
+        }
     }
     
     # Copy additional files/directories
@@ -127,25 +149,38 @@ function Create-ReleasePackage {
     }
     
     # Create README for the release
+    $CliIncluded = Test-Path (Join-Path $VersionedReleasePath "taxglide.exe")
+    $GuiIncluded = Test-Path (Join-Path $VersionedReleasePath "taxglide_gui.exe")
+    
+    $FilesSection = "Files included:`n- configs/: Tax configuration files for different years`n"
+    $UsageSection = "Usage:`n"
+    
+    if ($CliIncluded) {
+        $FilesSection += "- taxglide.exe: Command-line interface (no Python installation required)`n"
+        $UsageSection += "  taxglide.exe --help                     # Show CLI commands`n"
+        $UsageSection += "  taxglide.exe calc --year 2025 --income 100000  # Calculate taxes`n"
+        $UsageSection += "  taxglide.exe optimize --year 2025 --income 80000 --max-deduction 5000  # Optimize deductions`n"
+        $UsageSection += "  taxglide.exe validate --year 2025       # Validate configurations`n"
+    }
+    
+    if ($GuiIncluded) {
+        $FilesSection += "- taxglide_gui.exe: Graphical user interface`n"
+        $UsageSection = "  taxglide_gui.exe                        # Launch GUI (recommended)`n" + $UsageSection
+    }
+    
     $ReadmeContent = @"
 TaxGlide v$Version - Portable Release
 ====================================
 
-This is a portable release of TaxGlide, a Swiss tax calculator CLI.
+This is a portable release of TaxGlide, a Swiss tax calculator.
 
-Files included:
-- taxglide.exe: Main executable (no Python installation required)
-- configs/: Tax configuration files for different years
-
-Usage:
-  taxglide.exe --help                     # Show available commands
-  taxglide.exe calc --year 2025 --income 100000  # Calculate taxes
-  taxglide.exe validate --year 2025       # Validate configurations
-
+$FilesSection
+$UsageSection
 For more information, visit: https://github.com/csarwi/taxglide
 
 Built on: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')
 Platform: Windows x64
+Build Target: $($BuildConfig.BuildTarget)
 "@
     
     $ReadmePath = Join-Path $VersionedReleasePath "README.txt"
@@ -176,6 +211,79 @@ Platform: Windows x64
     }
 }
 
+# Function to build GUI with Tauri
+function Build-GUI {
+    Write-Host "=== Building TaxGlide GUI ===" -ForegroundColor Cyan
+    
+    $GuiPath = Get-BuildPath $BuildConfig.GuiDir
+    if (-not (Test-Path $GuiPath)) {
+        Write-Host "Error: GUI directory not found: $GuiPath" -ForegroundColor Red
+        return $false
+    }
+    
+    # Check if npm is available
+    try {
+        $NpmVersion = & npm --version 2>$null
+        Write-Host "Found npm version: $NpmVersion" -ForegroundColor Green
+    } catch {
+        Write-Host "Error: npm not found. Please install Node.js" -ForegroundColor Red
+        return $false
+    }
+    
+    # Navigate to GUI directory
+    $OriginalDir = Get-Location
+    try {
+        Set-Location $GuiPath
+        
+        Write-Host "Installing GUI dependencies..." -ForegroundColor Yellow
+        $InstallResult = & cmd /c "npm install" 2>&1
+        if ($LASTEXITCODE -ne 0) {
+            Write-Host "Error: npm install failed" -ForegroundColor Red
+            Write-Host "Output: $InstallResult" -ForegroundColor Red
+            return $false
+        }
+        
+        Write-Host "Building GUI with Tauri..." -ForegroundColor Yellow
+        $BuildResult = & cmd /c "npm run tauri build" 2>&1
+        if ($LASTEXITCODE -ne 0) {
+            Write-Host "Error: Tauri build failed" -ForegroundColor Red
+            Write-Host "Output: $BuildResult" -ForegroundColor Red
+            return $false
+        }
+        
+        # Find the built executable (Tauri uses package name from Cargo.toml)
+        $TauriOutputDir = Join-Path $GuiPath "src-tauri\target\release"
+        $TauriExeName = "taxglide-gui.exe"  # This matches the name in Cargo.toml
+        $TauriExePath = Join-Path $TauriOutputDir $TauriExeName
+        $GuiExePath = $TauriExePath
+        
+        if (Test-Path $GuiExePath) {
+            $FileSize = (Get-Item $GuiExePath).Length / 1MB
+            Write-Host "=== GUI BUILD SUCCESSFUL ===" -ForegroundColor Green
+            Write-Host "GUI executable created: $GuiExePath" -ForegroundColor Green
+            Write-Host "File size: $([math]::Round($FileSize, 2)) MB" -ForegroundColor Green
+            
+            # Copy GUI executable to main project dist directory
+            $MainProjectRoot = Split-Path $GuiPath -Parent  # Go up one level from gui/ to project root
+            $MainDistDir = Join-Path $MainProjectRoot "dist"
+            $DistGuiPath = Join-Path $MainDistDir "$($BuildConfig.GuiOutputName).exe"
+            Copy-Item $GuiExePath $DistGuiPath -Force
+            Write-Host "Copied GUI to main dist: $DistGuiPath" -ForegroundColor Green
+            
+            return $true
+        } else {
+            Write-Host "Error: GUI executable not found at expected location: $GuiExePath" -ForegroundColor Red
+            return $false
+        }
+        
+    } catch {
+        Write-Host "Error during GUI build: $($_.Exception.Message)" -ForegroundColor Red
+        return $false
+    } finally {
+        Set-Location $OriginalDir
+    }
+}
+
 # Function to run tests before building
 function Test-TaxGlide {
     Write-Host "=== Running Tests Before Build ===" -ForegroundColor Cyan
@@ -201,7 +309,7 @@ function Test-TaxGlide {
 
 # Main build function
 function Build-TaxGlide {
-    Write-Host "=== TaxGlide Nuitka Build Process ===" -ForegroundColor Cyan
+    Write-Host "=== TaxGlide Build Process (Target: $($BuildConfig.BuildTarget)) ===" -ForegroundColor Cyan
     
     # Run tests first
     if (-not (Test-TaxGlide)) {
@@ -209,15 +317,90 @@ function Build-TaxGlide {
         return $false
     }
     
-    Write-Host "Starting build with optimized settings..." -ForegroundColor Yellow
+    $BuildResults = @{
+        "CLI" = $null
+        "GUI" = $null
+        "Overall" = $false
+    }
     
     # Ensure output directory exists
     $OutputPath = Get-BuildPath $BuildConfig.OutputDir
     Ensure-Directory $OutputPath
     
+    # Build CLI if requested
+    if ($BuildConfig.BuildCLI) {
+        Write-Host "=== Building CLI ===" -ForegroundColor Cyan
+        $BuildResults.CLI = Build-CLI
+    } else {
+        Write-Host "Skipping CLI build (target: $($BuildConfig.BuildTarget))" -ForegroundColor Yellow
+        $BuildResults.CLI = $true  # Mark as success since it wasn't requested
+    }
+    
+    # Build GUI if requested
+    if ($BuildConfig.BuildGUI) {
+        if ($BuildConfig.BuildCLI -and -not $BuildResults.CLI) {
+            Write-Host "Skipping GUI build due to CLI build failure" -ForegroundColor Yellow
+            $BuildResults.GUI = $false
+        } else {
+            Write-Host "=== Building GUI ===" -ForegroundColor Cyan
+            $BuildResults.GUI = Build-GUI
+        }
+    } else {
+        Write-Host "Skipping GUI build (target: $($BuildConfig.BuildTarget))" -ForegroundColor Yellow
+        $BuildResults.GUI = $true  # Mark as success since it wasn't requested
+    }
+    
+    # Determine overall success
+    $BuildResults.Overall = $BuildResults.CLI -and $BuildResults.GUI
+    
+    # Create release package if configured and builds were successful
+    if ($BuildConfig.CreateRelease -and $BuildResults.Overall) {
+        Write-Host "" 
+        try {
+            $Version = Get-ProjectVersion $BuildConfig.ProjectTomlPath
+            Write-Host "Detected version: $Version" -ForegroundColor Green
+            
+            # Determine which executables to include
+            $ExecutablesToInclude = @()
+            if ($BuildConfig.BuildCLI) {
+                $ExecutablesToInclude += Join-Path $OutputPath "$($BuildConfig.OutputName).exe"
+            }
+            if ($BuildConfig.BuildGUI) {
+                $ExecutablesToInclude += Join-Path $OutputPath "$($BuildConfig.GuiOutputName).exe"
+            }
+            
+            if ($ExecutablesToInclude.Count -gt 0) {
+                $ReleaseResult = Create-ReleasePackage -ExecutablePaths $ExecutablesToInclude -Version $Version -ReleaseDir $BuildConfig.ReleaseDir -AdditionalFiles $BuildConfig.ReleaseFiles
+                
+                if ($ReleaseResult.success) {
+                    Write-Host "" 
+                    Write-Host "=== RELEASE SUMMARY ===" -ForegroundColor Green
+                    Write-Host "Version: $($ReleaseResult.version)" -ForegroundColor White
+                    Write-Host "Target: $($BuildConfig.BuildTarget)" -ForegroundColor White
+                    Write-Host "Release ZIP: $($ReleaseResult.zip_path)" -ForegroundColor White
+                    Write-Host "ZIP Size: $($ReleaseResult.zip_size_mb) MB" -ForegroundColor White
+                    Write-Host "Release ready for distribution!" -ForegroundColor Green
+                } else {
+                    Write-Host "Warning: Release packaging failed: $($ReleaseResult.error)" -ForegroundColor Yellow
+                }
+            }
+        } catch {
+            Write-Host "Warning: Release packaging failed: $($_.Exception.Message)" -ForegroundColor Yellow
+        }
+    }
+    
+    return $BuildResults.Overall
+}
+
+# Function to build CLI with Nuitka
+function Build-CLI {
+    Write-Host "Starting CLI build with optimized settings..." -ForegroundColor Yellow
+    
+    $OutputPath = Get-BuildPath $BuildConfig.OutputDir
+    
     # Clean previous build if requested
     if ($BuildConfig.CleanBuild) {
-        Write-Host "Cleaning previous build artifacts..." -ForegroundColor Yellow
+        Write-Host "Cleaning previous CLI build artifacts..." -ForegroundColor Yellow
         $ExePath = Join-Path $OutputPath "$($BuildConfig.OutputName).exe"
         if (Test-Path $ExePath) {
             Remove-Item $ExePath -Force
@@ -299,32 +482,8 @@ function Build-TaxGlide {
                 
                 # Test the executable
                 Write-Host ""
-                Write-Host "Testing executable..." -ForegroundColor Yellow
+                Write-Host "Testing CLI executable..." -ForegroundColor Yellow
                 & $FinalExe --help
-                
-                # Create release package if configured
-                if ($BuildConfig.CreateRelease) {
-                    Write-Host "" 
-                    try {
-                        $Version = Get-ProjectVersion $BuildConfig.ProjectTomlPath
-                        Write-Host "Detected version: $Version" -ForegroundColor Green
-                        
-                        $ReleaseResult = Create-ReleasePackage -ExecutablePath $FinalExe -Version $Version -ReleaseDir $BuildConfig.ReleaseDir -AdditionalFiles $BuildConfig.ReleaseFiles
-                        
-                        if ($ReleaseResult.success) {
-                            Write-Host "" 
-                            Write-Host "=== RELEASE SUMMARY ===" -ForegroundColor Green
-                            Write-Host "Version: $($ReleaseResult.version)" -ForegroundColor White
-                            Write-Host "Release ZIP: $($ReleaseResult.zip_path)" -ForegroundColor White
-                            Write-Host "ZIP Size: $($ReleaseResult.zip_size_mb) MB" -ForegroundColor White
-                            Write-Host "Release ready for distribution!" -ForegroundColor Green
-                        } else {
-                            Write-Host "Warning: Release packaging failed: $($ReleaseResult.error)" -ForegroundColor Yellow
-                        }
-                    } catch {
-                        Write-Host "Warning: Release packaging failed: $($_.Exception.Message)" -ForegroundColor Yellow
-                    }
-                }
                 
                 return $true
         } else {
