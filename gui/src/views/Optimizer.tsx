@@ -476,28 +476,48 @@ const Optimizer: React.FC = () => {
                 📋 Income Details
               </h4>
               
-              <div style={{
-                display: 'grid',
-                gridTemplateColumns: '1fr 1fr 1fr',
-                gap: theme.spacing.md,
-                fontSize: theme.fontSizes.sm,
-              }}>
-                <div>
-                  <div style={{ fontWeight: '600', marginBottom: theme.spacing.xs }}>Income Type</div>
-                  <div style={{ marginBottom: theme.spacing.xs }}>St. Gallen Income:</div>
-                  <div style={{ marginBottom: theme.spacing.xs }}>Federal Income:</div>
+              {result?.sweet_spot?.income_details ? (
+                // Separate incomes case - show detailed breakdown
+                <div style={{
+                  display: 'grid',
+                  gridTemplateColumns: '1fr 1fr 1fr',
+                  gap: theme.spacing.md,
+                  fontSize: theme.fontSizes.sm,
+                }}>
+                  <div>
+                    <div style={{ fontWeight: '600', marginBottom: theme.spacing.xs }}>Income Type</div>
+                    <div style={{ marginBottom: theme.spacing.xs }}>St. Gallen Income:</div>
+                    <div style={{ marginBottom: theme.spacing.xs }}>Federal Income:</div>
+                  </div>
+                  <div>
+                    <div style={{ fontWeight: '600', marginBottom: theme.spacing.xs, color: theme.colors.textSecondary }}>Original</div>
+                    <div style={{ marginBottom: theme.spacing.xs, fontFamily: theme.fonts.mono }}>CHF {result.sweet_spot.income_details.original_sg?.toLocaleString() || '0'}</div>
+                    <div style={{ marginBottom: theme.spacing.xs, fontFamily: theme.fonts.mono }}>CHF {result.sweet_spot.income_details.original_fed?.toLocaleString() || '0'}</div>
+                  </div>
+                  <div>
+                    <div style={{ fontWeight: '600', marginBottom: theme.spacing.xs, color: theme.colors.success }}>After Deduction</div>
+                    <div style={{ marginBottom: theme.spacing.xs, fontFamily: theme.fonts.mono }}>CHF {result.sweet_spot.income_details.after_deduction_sg?.toLocaleString() || '0'}</div>
+                    <div style={{ marginBottom: theme.spacing.xs, fontFamily: theme.fonts.mono }}>CHF {result.sweet_spot.income_details.after_deduction_fed?.toLocaleString() || '0'}</div>
+                  </div>
                 </div>
-                <div>
-                  <div style={{ fontWeight: '600', marginBottom: theme.spacing.xs, color: theme.colors.textSecondary }}>Original</div>
-                  <div style={{ marginBottom: theme.spacing.xs, fontFamily: theme.fonts.mono }}>CHF {result?.sweet_spot?.income_details?.original_sg?.toLocaleString() || '0'}</div>
-                  <div style={{ marginBottom: theme.spacing.xs, fontFamily: theme.fonts.mono }}>CHF {result?.sweet_spot?.income_details?.original_fed?.toLocaleString() || '0'}</div>
+              ) : (
+                // Single income case - show simplified breakdown
+                <div style={{
+                  display: 'grid',
+                  gridTemplateColumns: '1fr 1fr',
+                  gap: theme.spacing.md,
+                  fontSize: theme.fontSizes.sm,
+                }}>
+                  <div>
+                    <div style={{ fontWeight: '600', marginBottom: theme.spacing.xs, color: theme.colors.textSecondary }}>Original Income</div>
+                    <div style={{ fontFamily: theme.fonts.mono }}>CHF {(formData.income || 0).toLocaleString()}</div>
+                  </div>
+                  <div>
+                    <div style={{ fontWeight: '600', marginBottom: theme.spacing.xs, color: theme.colors.success }}>After Deduction</div>
+                    <div style={{ fontFamily: theme.fonts.mono }}>CHF {result?.sweet_spot?.new_income?.toLocaleString() || '0'}</div>
+                  </div>
                 </div>
-                <div>
-                  <div style={{ fontWeight: '600', marginBottom: theme.spacing.xs, color: theme.colors.success }}>After Deduction</div>
-                  <div style={{ marginBottom: theme.spacing.xs, fontFamily: theme.fonts.mono }}>CHF {result?.sweet_spot?.income_details?.after_deduction_sg?.toLocaleString() || '0'}</div>
-                  <div style={{ marginBottom: theme.spacing.xs, fontFamily: theme.fonts.mono }}>CHF {result?.sweet_spot?.income_details?.after_deduction_fed?.toLocaleString() || '0'}</div>
-                </div>
-              </div>
+              )}
             </div>
 
             {/* Fire Department Tax Information */}
