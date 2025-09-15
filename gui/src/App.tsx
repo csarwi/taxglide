@@ -2,6 +2,7 @@ import { useState } from "react";
 import reactLogo from "./assets/react.svg";
 import { invoke } from "@tauri-apps/api/core";
 import CliTester from "./CliTester";
+import TauriTest from "./TauriTest";
 import "./App.css";
 
 function App() {
@@ -48,7 +49,11 @@ function App() {
       </div>
 
       {showCliTester ? (
-        <CliTester />
+        <>
+          <TauriTest />
+          <hr style={{ margin: "20px 0" }} />
+          <CliTester />
+        </>
       ) : (
         <>
           <p>Click on the Tauri, Vite, and React logos to learn more.</p>
