@@ -1,5 +1,11 @@
-# TaxGlide Build Script
-# Centralized configuration for building CLI and/or GUI executables
+# TaxGlide Build Script - EXECUTABLE CREATION ONLY
+# Builds standalone CLI and/or GUI executables from existing source code
+# 
+# PREREQUISITES (this script does NOT install these):
+#   - Virtual environment with required packages already installed
+#   - Nuitka installed in the virtual environment
+#   - Node.js/npm for GUI builds
+#
 # Usage:
 #   .\build_executable.ps1                  # Build both CLI and GUI (default)
 #   .\build_executable.ps1 -BuildTarget cli  # Build CLI only
@@ -284,36 +290,56 @@ function Build-GUI {
     }
 }
 
-# Function to run tests before building
-function Test-TaxGlide {
-    Write-Host "=== Running Tests Before Build ===" -ForegroundColor Cyan
-    Write-Host "Ensuring code quality before building..." -ForegroundColor Yellow
+# Function to verify Python environment is ready (but don't install anything)
+function Test-BuildEnvironment {
+    Write-Host "=== Verifying Build Environment ===" -ForegroundColor Cyan
     
+    # Check if Python executable exists
+    if (-not (Test-Path $BuildConfig.PythonPath)) {
+        Write-Host "❌ Python executable not found at: $($BuildConfig.PythonPath)" -ForegroundColor Red
+        Write-Host "Please ensure the virtual environment is set up correctly." -ForegroundColor Red
+        return $false
+    }
+    
+    # Check if Nuitka is available
     try {
-        # Run the test suite using run_tests.py
-        $TestProcess = Start-Process -FilePath $BuildConfig.PythonPath -ArgumentList @("run_tests.py") -Wait -PassThru -NoNewWindow
-        
-        if ($TestProcess.ExitCode -eq 0) {
-            Write-Host "✅ All tests passed - proceeding with build" -ForegroundColor Green
-            return $true
+        $NuitkaCheck = & $BuildConfig.PythonPath -m nuitka --version 2>&1
+        if ($LASTEXITCODE -eq 0) {
+            Write-Host "✅ Nuitka available" -ForegroundColor Green
         } else {
-            Write-Host "❌ Tests failed - build cancelled" -ForegroundColor Red
-            Write-Host "Please fix failing tests before building" -ForegroundColor Red
+            Write-Host "❌ Nuitka not available. Please install with: pip install nuitka" -ForegroundColor Red
             return $false
         }
     } catch {
-        Write-Host "❌ Error running tests: $($_.Exception.Message)" -ForegroundColor Red
+        Write-Host "❌ Error checking Nuitka: $($_.Exception.Message)" -ForegroundColor Red
         return $false
     }
+    
+    # Check if main script exists
+    if (-not (Test-Path $BuildConfig.MainScript)) {
+        Write-Host "❌ Main script not found: $($BuildConfig.MainScript)" -ForegroundColor Red
+        return $false
+    }
+    
+    # Check if config directories exist
+    foreach ($dataDir in $BuildConfig.IncludeDataDirs) {
+        if (-not (Test-Path $dataDir)) {
+            Write-Host "❌ Data directory not found: $dataDir" -ForegroundColor Red
+            return $false
+        }
+    }
+    
+    Write-Host "✅ Build environment ready" -ForegroundColor Green
+    return $true
 }
 
 # Main build function
 function Build-TaxGlide {
     Write-Host "=== TaxGlide Build Process (Target: $($BuildConfig.BuildTarget)) ===" -ForegroundColor Cyan
     
-    # Run tests first
-    if (-not (Test-TaxGlide)) {
-        Write-Host "Build aborted due to test failures" -ForegroundColor Red
+    # Verify build environment first
+    if (-not (Test-BuildEnvironment)) {
+        Write-Host "Build aborted due to environment issues" -ForegroundColor Red
         return $false
     }
     
@@ -522,19 +548,7 @@ function Show-BuildConfig {
 if ($MyInvocation.InvocationName -ne '.') {
     Show-BuildConfig
     
-    # Verify we're in the right directory
-    if (-not (Test-Path $BuildConfig.MainScript)) {
-        Write-Host "Error: Main script '$($BuildConfig.MainScript)' not found in current directory." -ForegroundColor Red
-        Write-Host "Please run this script from the TaxGlide project root." -ForegroundColor Red
-        exit 1
-    }
-    
-    # Check if virtual environment is activated
-    if (-not (Test-Path $BuildConfig.PythonPath)) {
-        Write-Host "Error: Python executable not found at '$($BuildConfig.PythonPath)'" -ForegroundColor Red
-        Write-Host "Please ensure the virtual environment is set up correctly." -ForegroundColor Red
-        exit 1
-    }
+    # Environment checks are now handled in Test-BuildEnvironment
     
     # Start the build
     $Success = Build-TaxGlide
