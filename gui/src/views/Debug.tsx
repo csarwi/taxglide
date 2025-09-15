@@ -1,6 +1,5 @@
 import React from 'react';
 import TauriTest from '../TauriTest';
-import CliTester from '../CliTester';
 import { createCardStyle } from '../theme';
 
 const Debug: React.FC = () => {
@@ -8,10 +7,6 @@ const Debug: React.FC = () => {
     <div>
       <div style={createCardStyle()}>
         <TauriTest />
-      </div>
-      
-      <div style={{ marginTop: '24px', ...createCardStyle() }}>
-        <CliTester />
       </div>
     </div>
   );

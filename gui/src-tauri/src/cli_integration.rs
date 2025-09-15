@@ -356,6 +356,8 @@ impl CliIntegration {
         if let Some(ref filing_status) = params.filing_status {
             args.extend(["--filing-status".to_string(), filing_status.clone()]);
         }
+        // include_local_marginal is true by default in CLI
+        // For typer boolean flags, we use the --no-include-local-marginal form when false
         if params.include_local_marginal == Some(false) {
             args.push("--no-include-local-marginal".to_string());
         }

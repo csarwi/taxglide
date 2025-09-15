@@ -126,6 +126,40 @@ export interface OptimizeResult {
   };
 }
 
+// Scan command parameters
+export interface ScanParams {
+  year: number;
+  income?: number;
+  income_sg?: number;
+  income_fed?: number;
+  max_deduction: number;
+  d_step?: number;
+  filing_status?: string;
+  pick: string[];
+  skip: string[];
+  include_local_marginal?: boolean;
+}
+
+// Scan result row based on CLI scan command output
+export interface ScanResultRow {
+  deduction: number;
+  new_income: number;
+  new_income_sg?: number;
+  new_income_fed?: number;
+  total_tax: number;
+  saved: number;
+  roi_percent: number;
+  sg_simple: number;
+  sg_after_multipliers: number;
+  federal: number;
+  federal_from: number;
+  federal_to: number | null;
+  federal_per100: number;
+  local_marginal_percent: number | null;
+}
+
+export type ScanResult = ScanResultRow[];
+
 // Context type
 interface CliContextType {
   status: CliStatusInfo | null;
@@ -134,6 +168,7 @@ interface CliContextType {
   initializeCli: () => Promise<void>;
   calculate: (params: CalcParams) => Promise<CalcResult>;
   optimize: (params: OptimizeParams) => Promise<OptimizeResult>;
+  scan: (params: ScanParams) => Promise<ScanResult>;
   isReady: boolean;
 }
 
@@ -218,6 +253,24 @@ export const CliProvider: React.FC<CliProviderProps> = ({ children }) => {
     }
   };
 
+  // Scan deduction ranges
+  const scan = async (params: ScanParams): Promise<ScanResult> => {
+    if (!isReady) {
+      throw new Error('CLI is not ready. Please initialize first.');
+    }
+
+    try {
+      console.log('Scanning deduction ranges with params:', params);
+      const result: ScanResult = await invoke('scan', { params });
+      console.log('Scan completed:', result);
+      return result;
+    } catch (err) {
+      const errorMessage = err as string;
+      console.error('Scan failed:', errorMessage);
+      throw new Error(errorMessage);
+    }
+  };
+
   // Get CLI status and auto-initialize on mount
   useEffect(() => {
     const getInitialStatusAndConnect = async () => {
@@ -274,6 +327,7 @@ export const CliProvider: React.FC<CliProviderProps> = ({ children }) => {
     initializeCli,
     calculate,
     optimize,
+    scan,
     isReady,
   };
 
