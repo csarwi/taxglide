@@ -175,6 +175,14 @@ impl CliIntegration {
             .stderr(Stdio::piped())
             .stdin(Stdio::null());
         
+        // On Windows, hide the console window when spawning CLI process
+        #[cfg(target_os = "windows")]
+        {
+            const CREATE_NO_WINDOW: u32 = 0x08000000;
+            use std::os::windows::process::CommandExt;
+            command.creation_flags(CREATE_NO_WINDOW);
+        }
+        
         let result = timeout(timeout_duration, async {
             let mut child = command.spawn()?;
             
