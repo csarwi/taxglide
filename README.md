@@ -1,8 +1,12 @@
 # TaxGlide 🇨🇭
 
-A comprehensive Swiss tax calculator and optimizer for **St. Gallen (SG) cantonal + Swiss federal taxes**. Available as both a powerful CLI tool and a modern desktop GUI application. Built with configuration-driven tax models and advanced deduction optimization algorithms.
+TaxGlide is a comprehensive Swiss tax calculator and optimizer tailored for St. Gallen (SG) cantonal and Swiss federal taxes. It is available both as a powerful CLI tool and as a modern desktop GUI application.
 
-Almost mainly written with ChatGPT-5 and Claude.
+The project was born from the idea of finding the optimal level of pension fund buy-ins — exploring where the ROI lies and how to structure multi-year deductions to maximize tax savings.
+
+Built on configuration-driven tax models and advanced deduction optimization algorithms, TaxGlide helps you plan ahead with precision.
+
+Almost entirely written with the support of ChatGPT-5 and Claude.
 
 ## Features
 
