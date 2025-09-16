@@ -15,7 +15,13 @@
 param(
     [Parameter(Mandatory=$false)]
     [ValidateSet('cli', 'gui', 'both')]
-    [string]$BuildTarget = 'both'
+    [string]$BuildTarget = 'both',
+    
+    [Parameter(Mandatory=$false)]
+    [switch]$UploadToGitHub,
+    
+    [Parameter(Mandatory=$false)]
+    [string]$ReleaseNotes = "Latest TaxGlide release with new features and improvements."
 )
 
 # Configuration - All paths and settings in one place
@@ -406,6 +412,27 @@ function Build-TaxGlide {
                     Write-Host "Release ZIP: $($ReleaseResult.zip_path)" -ForegroundColor White
                     Write-Host "ZIP Size: $($ReleaseResult.zip_size_mb) MB" -ForegroundColor White
                     Write-Host "Release ready for distribution!" -ForegroundColor Green
+                    
+                    # Upload to GitHub if requested
+                    if ($UploadToGitHub) {
+                        Write-Host "" 
+                        Write-Host "🚀 Uploading to GitHub..." -ForegroundColor Yellow
+                        try {
+                            $UploadScriptPath = Join-Path (Get-Location) "upload-release.ps1"
+                            if (Test-Path $UploadScriptPath) {
+                                & $UploadScriptPath -Version $ReleaseResult.version -Notes $ReleaseNotes
+                                if ($LASTEXITCODE -eq 0) {
+                                    Write-Host "✅ Successfully uploaded to GitHub!" -ForegroundColor Green
+                                } else {
+                                    Write-Host "❌ GitHub upload failed" -ForegroundColor Red
+                                }
+                            } else {
+                                Write-Host "❌ Upload script not found: $UploadScriptPath" -ForegroundColor Red
+                            }
+                        } catch {
+                            Write-Host "❌ Error during GitHub upload: $($_.Exception.Message)" -ForegroundColor Red
+                        }
+                    }
                 } else {
                     Write-Host "Warning: Release packaging failed: $($ReleaseResult.error)" -ForegroundColor Yellow
                 }

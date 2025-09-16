@@ -1,0 +1,92 @@
+name: 'Upload TaxGlide Release'
+
+on:
+  workflow_dispatch: # Manual trigger only
+    inputs:
+      version:
+        description: 'Release version (e.g., 0.4.0)'
+        required: true
+        type: string
+      release_notes:
+        description: 'Release notes (optional)'
+        required: false
+        type: string
+        default: 'Latest TaxGlide release with new features and improvements.'
+
+jobs:
+  upload-release:
+    permissions:
+      contents: write
+    runs-on: windows-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Check if release ZIP exists
+        shell: powershell
+        run: |
+          $zipPath = "releases/taxglide-v${{ github.event.inputs.version }}.zip"
+          if (-not (Test-Path $zipPath)) {
+            Write-Host "❌ Release ZIP not found: $zipPath" -ForegroundColor Red
+            Write-Host "Available files in releases/:" -ForegroundColor Yellow
+            Get-ChildItem releases/ -ErrorAction SilentlyContinue | ForEach-Object { Write-Host "  - $($_.Name)" }
+            exit 1
+          }
+          Write-Host "✅ Found release ZIP: $zipPath" -ForegroundColor Green
+      
+      - name: Create GitHub Release
+        id: create_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: v${{ github.event.inputs.version }}
+          release_name: TaxGlide v${{ github.event.inputs.version }}
+          body: |
+            ## TaxGlide v${{ github.event.inputs.version }}
+            
+            ${{ github.event.inputs.release_notes }}
+            
+            ### 📥 Download
+            
+            **Windows Users:** Download the ZIP file below, extract it, and run the executables.
+            
+            ### 🛠️ What's Included
+            
+            - `taxglide.exe` - Command-line interface
+            - `taxglide_gui.exe` - Graphical user interface (recommended)
+            - `configs/` - Tax configuration files for different years
+            - `README.txt` - Usage instructions
+            
+            ### 🚀 Quick Start
+            
+            1. Download and extract the ZIP file
+            2. Double-click `taxglide_gui.exe` to launch the GUI
+            3. Or use `taxglide.exe --help` for command-line options
+            
+            ---
+            
+            *Built from commit ${{ github.sha }}*
+          draft: false
+          prerelease: false
+      
+      - name: Upload Release Asset
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: releases/taxglide-v${{ github.event.inputs.version }}.zip
+          asset_name: taxglide-v${{ github.event.inputs.version }}.zip
+          asset_content_type: application/zip
+      
+      - name: Release Summary
+        shell: powershell
+        run: |
+          Write-Host "" 
+          Write-Host "=== 🎉 RELEASE UPLOADED SUCCESSFULLY ===" -ForegroundColor Green
+          Write-Host "Version: v${{ github.event.inputs.version }}" -ForegroundColor White
+          Write-Host "Release URL: ${{ steps.create_release.outputs.html_url }}" -ForegroundColor White
+          Write-Host "Download URL: ${{ steps.create_release.outputs.html_url }}/download/taxglide-v${{ github.event.inputs.version }}.zip" -ForegroundColor Cyan
+          Write-Host ""
