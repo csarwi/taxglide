@@ -1,32 +1,32 @@
 #!/usr/bin/env python3
 """
 Script to collect all .py and .yaml files into clipboard with headers.
-Respects .gitignore rules and excludes ignored files, also excludes itself..
+Respects .gitignore rules and excludes ignored files, also excludes itself.
+Also counts and reports non-blank lines of code.
 """
 
 import os
 import sys
 from pathlib import Path
 import fnmatch
-from pathlib import Path
 import pyperclip
 
-
 SCRIPT_PATH = Path(__file__).resolve()  # add this near the imports
+
 
 def parse_gitignore(gitignore_path):
     """Parse .gitignore file and return list of patterns."""
     patterns = []
     if not os.path.exists(gitignore_path):
         return patterns
-    
+
     with open(gitignore_path, 'r', encoding='utf-8', errors='ignore') as f:
         for line in f:
             line = line.strip()
             # Skip empty lines and comments
             if line and not line.startswith('#'):
                 patterns.append(line)
-    
+
     return patterns
 
 
@@ -38,7 +38,7 @@ def is_ignored(file_path, root_dir, gitignore_patterns):
         rel_path = rel_path.replace('\\', '/')  # Use forward slashes for consistency
     except ValueError:
         return False
-    
+
     # Check each pattern
     for pattern in gitignore_patterns:
         # Handle directory patterns (ending with /)
@@ -58,7 +58,7 @@ def is_ignored(file_path, root_dir, gitignore_patterns):
             filename = os.path.basename(rel_path)
             if fnmatch.fnmatch(filename, pattern):
                 return True
-    
+
     return False
 
 
@@ -66,17 +66,18 @@ def collect_files():
     """Main function to collect files and copy to clipboard."""
     root_dir = os.getcwd()
     gitignore_path = os.path.join(root_dir, '.gitignore')
-    
+
     # Parse .gitignore patterns
     gitignore_patterns = parse_gitignore(gitignore_path)
     print(f"Found {len(gitignore_patterns)} gitignore patterns")
-    
+
     # Extensions to collect
     target_extensions = {'.py', '.yaml', '.yml'}
-    
+
     collected_content = []
     file_count = 0
-    
+    total_loc = 0  # total non-blank lines of code
+
     # Walk through all directories
     for root, dirs, files in os.walk(root_dir):
         # Filter out ignored directories
@@ -91,10 +92,10 @@ def collect_files():
 
             if is_ignored(dir_path, root_dir, gitignore_patterns):
                 dirs_to_remove.append(d)
-        
+
         for d in dirs_to_remove:
             dirs.remove(d)
-        
+
         # Process files
         for file in files:
 
@@ -107,45 +108,49 @@ def collect_files():
             except Exception:
                 # fallback for platforms/filesystems without resolve/samefile support
                 if os.path.abspath(file_path) == str(SCRIPT_PATH):
-                    continue  
+                    continue
 
-            file_path = os.path.join(root, file)
             file_ext = os.path.splitext(file)[1].lower()
-            
+
             # Skip if not target extension
             if file_ext not in target_extensions:
                 continue
-            
+
             # Skip if ignored
             if is_ignored(file_path, root_dir, gitignore_patterns):
                 print(f"Skipping ignored file: {file_path}")
                 continue
-            
+
             # Read file content
             try:
                 with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
                     content = f.read()
-                
+
+                # Count non-blank lines
+                file_loc = sum(1 for line in content.splitlines() if line.strip())
+                total_loc += file_loc
+
                 # Create header with absolute path
                 abs_path = os.path.abspath(file_path)
-                header = f"\n{'=' * 80}\n# FILE: {abs_path}\n{'=' * 80}\n\n"
-                
+                header = f"\n{'=' * 80}\n# FILE: {abs_path}\n# LOC: {file_loc}\n{'=' * 80}\n\n"
+
                 collected_content.append(header + content)
                 file_count += 1
-                print(f"Collected: {abs_path}")
-                
+                print(f"Collected: {abs_path}  ({file_loc} LOC)")
+
             except Exception as e:
                 print(f"Error reading {file_path}: {e}")
-    
+
     if collected_content:
         # Join all content
         final_content = ''.join(collected_content)
-        
+
         # Copy to clipboard
         try:
             pyperclip.copy(final_content)
             print(f"\n✓ Successfully copied {file_count} files to clipboard!")
             print(f"Total characters: {len(final_content):,}")
+            print(f"Total non-blank lines of code: {total_loc:,}")
         except Exception as e:
             print(f"Error copying to clipboard: {e}")
             print("Content written to output.txt instead")
