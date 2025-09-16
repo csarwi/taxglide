@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useCli, CalcParams, CalcResult } from '../contexts/CliContext';
+import { useSharedForm } from '../contexts/SharedFormContext';
 import { theme, createButtonStyle, createCardStyle, createInputStyle } from '../theme';
 
 // Helper function to extract Feuerwehr amount from warning message
@@ -10,16 +11,9 @@ const extractFeuerAmount = (warning: string): number | null => {
 
 const Calculator: React.FC = () => {
   const { calculate, isReady } = useCli();
+  const { sharedData, updateSharedData } = useSharedForm();
   
   console.log('Calculator component rendering, isReady:', isReady);
-  
-  // Form state
-  const [formData, setFormData] = useState<CalcParams>({
-    year: 2025,
-    filing_status: '',
-    pick: [],
-    skip: [],
-  });
   
   const [result, setResult] = useState<CalcResult | null>(null);
   const [isCalculating, setIsCalculating] = useState(false);
@@ -27,11 +21,9 @@ const Calculator: React.FC = () => {
   const [useSeperateIncomes, setUseSeperateIncomes] = useState(false);
 
   // Handle form input changes
-  const handleInputChange = (field: keyof CalcParams, value: any) => {
-    setFormData(prev => ({
-      ...prev,
-      [field]: value
-    }));
+  const handleInputChange = (field: string, value: any) => {
+    // Update shared form data
+    updateSharedData({ [field]: value } as any);
   };
 
   // Handle calculation
@@ -52,7 +44,7 @@ const Calculator: React.FC = () => {
       
       // Prepare parameters based on income mode
       const params: CalcParams = {
-        ...formData,
+        ...sharedData,
         // Clear unused income fields
         ...(useSeperateIncomes ? {
           income: undefined,
@@ -128,7 +120,7 @@ const Calculator: React.FC = () => {
               type="number"
               min="2020"
               max="2030"
-              value={formData.year}
+              value={sharedData.year}
               onChange={(e) => handleInputChange('year', parseInt(e.target.value))}
               style={createInputStyle()}
               required
@@ -175,7 +167,7 @@ const Calculator: React.FC = () => {
               <input
                 type="number"
                 min="0"
-                value={formData.income_sg || ''}
+                value={sharedData.income_sg || ''}
                 onChange={(e) => handleInputChange('income_sg', e.target.value ? parseInt(e.target.value) : undefined)}
                 style={createInputStyle()}
               />
@@ -193,7 +185,7 @@ const Calculator: React.FC = () => {
               <input
                 type="number"
                 min="0"
-                value={formData.income_fed || ''}
+                value={sharedData.income_fed || ''}
                 onChange={(e) => handleInputChange('income_fed', e.target.value ? parseInt(e.target.value) : undefined)}
                 style={createInputStyle()}
               />
@@ -213,7 +205,7 @@ const Calculator: React.FC = () => {
               <input
                 type="number"
                 min="0"
-                value={formData.income || ''}
+                value={sharedData.income || ''}
                 onChange={(e) => handleInputChange('income', e.target.value ? parseInt(e.target.value) : undefined)}
                 style={createInputStyle()}
                 required={!useSeperateIncomes}
@@ -233,8 +225,8 @@ const Calculator: React.FC = () => {
               Filing Status (optional)
             </label>
             <select
-              value={formData.filing_status || ''}
-              onChange={(e) => handleInputChange('filing_status', e.target.value || undefined)}
+              value={sharedData.filing_status || 'single'}
+              onChange={(e) => handleInputChange('filing_status', e.target.value || 'single')}
               style={{
                 ...createInputStyle(),
                 cursor: 'pointer',

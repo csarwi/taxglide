@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useCli, ScanParams, ScanResult, ScanResultRow } from '../contexts/CliContext';
+import { useSharedForm } from '../contexts/SharedFormContext';
 import { createCardStyle, createButtonStyle, createInputStyle, theme } from '../theme';
 import DataTable, { TableColumn } from '../components/DataTable';
 
@@ -22,17 +23,11 @@ const formatPercentage = (value: number): string => {
 
 const Scanner: React.FC = () => {
   const { scan, isReady } = useCli();
+  const { sharedData, updateSharedData } = useSharedForm();
   
-  // Form state
-  const [formData, setFormData] = useState<ScanParams>({
-    year: 2025,
-    max_deduction: 50000,
-    d_step: 1000,
-    filing_status: '',
-    pick: [],
-    skip: [],
-    include_local_marginal: true,
-  });
+  // Local scanner-specific state
+  const [dStep, setDStep] = useState<number>(1000);
+  const [includeMarginal, setIncludeMarginal] = useState<boolean>(true);
   
   const [result, setResult] = useState<ScanResult | null>(null);
   const [isScanning, setIsScanning] = useState(false);
@@ -40,11 +35,15 @@ const Scanner: React.FC = () => {
   const [useSeperateIncomes, setUseSeperateIncomes] = useState(false);
 
   // Handle form input changes
-  const handleInputChange = (field: keyof ScanParams, value: any) => {
-    setFormData(prev => ({
-      ...prev,
-      [field]: value
-    }));
+  const handleInputChange = (field: string, value: any) => {
+    if (field === 'd_step') {
+      setDStep(value);
+    } else if (field === 'include_local_marginal') {
+      setIncludeMarginal(value);
+    } else {
+      // Update shared form data for common fields
+      updateSharedData({ [field]: value } as any);
+    }
   };
 
   // Handle scan
@@ -60,7 +59,10 @@ const Scanner: React.FC = () => {
       
       // Prepare parameters based on income mode
       const params: ScanParams = {
-        ...formData,
+        ...sharedData,
+        max_deduction: sharedData.max_deduction || 50000, // Provide default if not set
+        d_step: dStep,
+        include_local_marginal: includeMarginal,
         // Clear unused income fields
         ...(useSeperateIncomes ? {
           income: undefined,
@@ -169,7 +171,7 @@ const Scanner: React.FC = () => {
   ];
 
   // Add marginal tax rate column if enabled
-  if (formData.include_local_marginal) {
+  if (includeMarginal) {
     columns.push({
       key: 'local_marginal_percent',
       label: 'Marginal Rate',
@@ -280,7 +282,7 @@ const Scanner: React.FC = () => {
                 type="number"
                 min="2020"
                 max="2030"
-                value={formData.year}
+                value={sharedData.year}
                 onChange={(e) => handleInputChange('year', parseInt(e.target.value))}
                 style={createInputStyle()}
                 required
@@ -301,7 +303,7 @@ const Scanner: React.FC = () => {
                 type="number"
                 min="0"
                 step="1000"
-                value={formData.max_deduction}
+                value={sharedData.max_deduction || 50000}
                 onChange={(e) => handleInputChange('max_deduction', parseInt(e.target.value))}
                 style={createInputStyle()}
                 required
@@ -322,7 +324,7 @@ const Scanner: React.FC = () => {
                 type="number"
                 min="100"
                 step="100"
-                value={formData.d_step || 1000}
+                value={dStep || 1000}
                 onChange={(e) => handleInputChange('d_step', parseInt(e.target.value))}
                 style={createInputStyle()}
               />
@@ -369,7 +371,7 @@ const Scanner: React.FC = () => {
               <input
                 type="number"
                 min="0"
-                value={formData.income_sg || ''}
+                value={sharedData.income_sg || ''}
                 onChange={(e) => handleInputChange('income_sg', e.target.value ? parseInt(e.target.value) : undefined)}
                 style={createInputStyle()}
                 required
@@ -388,7 +390,7 @@ const Scanner: React.FC = () => {
               <input
                 type="number"
                 min="0"
-                value={formData.income_fed || ''}
+                value={sharedData.income_fed || ''}
                 onChange={(e) => handleInputChange('income_fed', e.target.value ? parseInt(e.target.value) : undefined)}
                 style={createInputStyle()}
                 required
@@ -409,7 +411,7 @@ const Scanner: React.FC = () => {
               <input
                 type="number"
                 min="0"
-                value={formData.income || ''}
+                value={sharedData.income || ''}
                 onChange={(e) => handleInputChange('income', e.target.value ? parseInt(e.target.value) : undefined)}
                 style={createInputStyle()}
                 required={!useSeperateIncomes}
@@ -429,8 +431,8 @@ const Scanner: React.FC = () => {
               Filing Status (optional)
             </label>
             <select
-              value={formData.filing_status || ''}
-              onChange={(e) => handleInputChange('filing_status', e.target.value || undefined)}
+              value={sharedData.filing_status || 'single'}
+              onChange={(e) => handleInputChange('filing_status', e.target.value || 'single')}
               style={{
                 ...createInputStyle(),
                 cursor: 'pointer',
@@ -453,7 +455,7 @@ const Scanner: React.FC = () => {
             }}>
               <input
                 type="checkbox"
-                checked={formData.include_local_marginal || false}
+                checked={includeMarginal || false}
                 onChange={(e) => handleInputChange('include_local_marginal', e.target.checked)}
                 style={{ marginRight: theme.spacing.sm }}
               />

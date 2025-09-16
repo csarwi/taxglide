@@ -54,6 +54,7 @@ export interface OptimizeParams {
   pick: string[];
   skip: string[];
   max_deduction?: number;
+  tolerance_bp?: number;
 }
 
 // Optimize command result based on contract documentation

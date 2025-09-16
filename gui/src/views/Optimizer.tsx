@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useCli, OptimizeParams, OptimizeResult } from '../contexts/CliContext';
+import { useSharedForm } from '../contexts/SharedFormContext';
 import { theme, createButtonStyle, createCardStyle, createInputStyle } from '../theme';
 
 // Helper function to extract Feuerwehr amount from warning message
@@ -10,26 +11,26 @@ const extractFeuerAmount = (warning: string): number | null => {
 
 const Optimizer: React.FC = () => {
   const { optimize, isReady } = useCli();
+  const { sharedData, updateSharedData } = useSharedForm();
   
-  // Form state
-  const [formData, setFormData] = useState<OptimizeParams>({
-    year: 2025,
-    filing_status: '',
-    pick: [],
-    skip: [],
-  });
+  // Local optimizer-specific state
+  const [toleranceBp, setToleranceBp] = useState<number | undefined>();
   
   const [result, setResult] = useState<OptimizeResult | null>(null);
   const [isOptimizing, setIsOptimizing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [useSeparateIncomes, setUseSeparateIncomes] = useState(false);
+  const [showAdvancedOptions, setShowAdvancedOptions] = useState(false);
+  const [showToleranceHelp, setShowToleranceHelp] = useState(false);
 
   // Handle form input changes
-  const handleInputChange = (field: keyof OptimizeParams, value: any) => {
-    setFormData(prev => ({
-      ...prev,
-      [field]: value
-    }));
+  const handleInputChange = (field: string, value: any) => {
+    if (field === 'tolerance_bp') {
+      setToleranceBp(value);
+    } else {
+      // Update shared form data for common fields
+      updateSharedData({ [field]: value } as any);
+    }
   };
 
   // Handle optimization
@@ -46,7 +47,8 @@ const Optimizer: React.FC = () => {
       
       // Prepare parameters based on income mode
       const params: OptimizeParams = {
-        ...formData,
+        ...sharedData,
+        tolerance_bp: toleranceBp,
         // Clear unused income fields
         ...(useSeparateIncomes ? {
           income: undefined,
@@ -118,7 +120,7 @@ const Optimizer: React.FC = () => {
               type="number"
               min="2020"
               max="2030"
-              value={formData.year}
+              value={sharedData.year}
               onChange={(e) => handleInputChange('year', parseInt(e.target.value))}
               style={createInputStyle()}
               required
@@ -165,7 +167,7 @@ const Optimizer: React.FC = () => {
                 <input
                   type="number"
                   min="0"
-                  value={formData.income_sg || ''}
+                  value={sharedData.income_sg || ''}
                   onChange={(e) => handleInputChange('income_sg', e.target.value ? parseInt(e.target.value) : undefined)}
                   style={createInputStyle()}
                 />
@@ -183,7 +185,7 @@ const Optimizer: React.FC = () => {
                 <input
                   type="number"
                   min="0"
-                  value={formData.income_fed || ''}
+                  value={sharedData.income_fed || ''}
                   onChange={(e) => handleInputChange('income_fed', e.target.value ? parseInt(e.target.value) : undefined)}
                   style={createInputStyle()}
                 />
@@ -203,7 +205,7 @@ const Optimizer: React.FC = () => {
               <input
                 type="number"
                 min="0"
-                value={formData.income || ''}
+                value={sharedData.income || ''}
                 onChange={(e) => handleInputChange('income', e.target.value ? parseInt(e.target.value) : undefined)}
                 style={createInputStyle()}
                 required={!useSeparateIncomes}
@@ -225,7 +227,7 @@ const Optimizer: React.FC = () => {
             <input
               type="number"
               min="0"
-              value={formData.max_deduction || ''}
+              value={sharedData.max_deduction || ''}
               onChange={(e) => handleInputChange('max_deduction', e.target.value ? parseInt(e.target.value) : undefined)}
               style={createInputStyle()}
               required
@@ -244,8 +246,8 @@ const Optimizer: React.FC = () => {
               Filing Status (optional)
             </label>
             <select
-              value={formData.filing_status || ''}
-              onChange={(e) => handleInputChange('filing_status', e.target.value || undefined)}
+              value={sharedData.filing_status || 'single'}
+              onChange={(e) => handleInputChange('filing_status', e.target.value || 'single')}
               style={{
                 ...createInputStyle(),
                 cursor: 'pointer',
@@ -256,6 +258,190 @@ const Optimizer: React.FC = () => {
               <option value="married_joint">Married</option>
             </select>
           </div>
+
+          {/* Advanced Options Toggle */}
+          <div style={{ marginBottom: theme.spacing.md }}>
+            <button
+              type="button"
+              onClick={() => setShowAdvancedOptions(!showAdvancedOptions)}
+              style={{
+                background: 'none',
+                border: 'none',
+                color: theme.colors.primary,
+                cursor: 'pointer',
+                fontSize: theme.fontSizes.sm,
+                padding: 0,
+                textDecoration: 'underline',
+                display: 'flex',
+                alignItems: 'center',
+                gap: theme.spacing.xs,
+              }}
+            >
+              {showAdvancedOptions ? '🔼' : '🔽'} Advanced Options
+            </button>
+          </div>
+
+          {/* Advanced Options Panel */}
+          {showAdvancedOptions && (
+            <div style={{
+              backgroundColor: theme.colors.backgroundSecondary,
+              border: `1px solid ${theme.colors.gray200}`,
+              borderRadius: theme.borderRadius.md,
+              padding: theme.spacing.md,
+              marginBottom: theme.spacing.md,
+            }}>
+              <div style={{ marginBottom: theme.spacing.md }}>
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  marginBottom: theme.spacing.sm,
+                }}>
+                  <label style={{
+                    fontWeight: '500',
+                    fontSize: theme.fontSizes.sm,
+                    color: theme.colors.text,
+                  }}>
+                    ROI Tolerance (basis points)
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => setShowToleranceHelp(!showToleranceHelp)}
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      color: theme.colors.primary,
+                      cursor: 'pointer',
+                      fontSize: theme.fontSizes.xs,
+                      padding: `${theme.spacing.xs} ${theme.spacing.sm}`,
+                      borderRadius: theme.borderRadius.sm,
+                      textDecoration: 'none',
+                    }}
+                  >
+                    {showToleranceHelp ? '❌ Hide Help' : '❓ What is this?'}
+                  </button>
+                </div>
+                <input
+                  type="number"
+                  min="1"
+                  max="500"
+                  step="1"
+                  value={toleranceBp || ''}
+                  onChange={(e) => handleInputChange('tolerance_bp', e.target.value ? parseFloat(e.target.value) : undefined)}
+                  placeholder="Auto (recommended)"
+                  style={createInputStyle()}
+                />
+                <div style={{
+                  fontSize: theme.fontSizes.xs,
+                  color: theme.colors.textSecondary,
+                  marginTop: theme.spacing.xs,
+                }}>
+                  Leave empty for automatic selection. Typical values: 10-50 basis points.
+                  {toleranceBp && (
+                    <span style={{ marginLeft: theme.spacing.xs }}>
+                      (= {(toleranceBp / 100).toFixed(2)}%)
+                    </span>
+                  )}
+                </div>
+
+                {/* Expandable Help Section */}
+                {showToleranceHelp && (
+                  <div style={{
+                    marginTop: theme.spacing.md,
+                    padding: theme.spacing.md,
+                    backgroundColor: 'rgba(59, 130, 246, 0.05)',
+                    border: `1px solid rgba(59, 130, 246, 0.2)`,
+                    borderRadius: theme.borderRadius.md,
+                    fontSize: theme.fontSizes.sm,
+                    lineHeight: '1.5',
+                  }}>
+                    <div style={{
+                      fontWeight: '600',
+                      color: theme.colors.text,
+                      marginBottom: theme.spacing.sm,
+                    }}>
+                      🎯 Understanding ROI Tolerance
+                    </div>
+                    
+                    <div style={{ marginBottom: theme.spacing.sm, color: theme.colors.text }}>
+                      <strong>What it does:</strong> Controls how "picky" the optimizer is when finding your ideal deduction amount.
+                    </div>
+                    
+                    <div style={{
+                      marginBottom: theme.spacing.md,
+                      padding: theme.spacing.sm,
+                      backgroundColor: 'rgba(255, 193, 7, 0.1)',
+                      borderLeft: `4px solid rgba(255, 193, 7, 0.5)`,
+                      borderRadius: theme.borderRadius.sm,
+                    }}>
+                      <div style={{ fontWeight: '600', marginBottom: theme.spacing.xs, color: theme.colors.text }}>
+                        🎯 How the "Sweet Spot" is Found:
+                      </div>
+                      <div style={{ color: theme.colors.textSecondary, fontSize: theme.fontSizes.sm }}>
+                        <p style={{ marginBottom: theme.spacing.xs }}>
+                          The optimizer first finds the deduction amount with the <strong>highest ROI</strong> (return on investment).
+                        </p>
+                        <p style={{ marginBottom: theme.spacing.xs }}>
+                          Then it looks for a range of deductions where the ROI is within your tolerance of that maximum.
+                        </p>
+                        <p style={{ marginBottom: theme.spacing.xs }}>
+                          <strong>Example:</strong> If the best ROI is 25.00% and your tolerance is 20 basis points (0.20%), 
+                          the system will consider any deduction with ROI ≥ 24.80% as "good enough".
+                        </p>
+                        <p>
+                          The "sweet spot" is chosen as the <strong>largest deduction</strong> in this "good enough" range, 
+                          giving you maximum tax savings while staying near-optimal.
+                        </p>
+                      </div>
+                    </div>
+                    
+                    <div style={{ marginBottom: theme.spacing.sm }}>
+                      <div style={{ fontWeight: '600', marginBottom: theme.spacing.xs, color: theme.colors.text }}>
+                        📊 Practical Examples:
+                      </div>
+                      <div style={{ color: theme.colors.textSecondary }}>
+                        <div style={{ marginBottom: theme.spacing.sm, paddingLeft: theme.spacing.sm }}>
+                          <strong style={{ color: theme.colors.text }}>10 basis points (0.10%):</strong><br/>
+                          Very strict. If max ROI is 25%, only considers deductions with ROI ≥ 24.90%.<br/>
+                          Result: Small, precise deduction amounts.
+                        </div>
+                        <div style={{ marginBottom: theme.spacing.sm, paddingLeft: theme.spacing.sm }}>
+                          <strong style={{ color: theme.colors.text }}>50 basis points (0.50%):</strong><br/>
+                          Balanced. If max ROI is 25%, considers deductions with ROI ≥ 24.50%.<br/>
+                          Result: Moderate deduction range, good balance of ROI and savings.
+                        </div>
+                        <div style={{ paddingLeft: theme.spacing.sm }}>
+                          <strong style={{ color: theme.colors.text }}>100 basis points (1.00%):</strong><br/>
+                          Flexible. If max ROI is 25%, considers deductions with ROI ≥ 24.00%.<br/>
+                          Result: Larger deductions, prioritizes maximum tax savings.
+                        </div>
+                      </div>
+                    </div>
+                    
+                    <div style={{ marginBottom: theme.spacing.sm }}>
+                      <div style={{ fontWeight: '600', marginBottom: theme.spacing.xs, color: theme.colors.text }}>
+                        ⚙️ When to adjust:
+                      </div>
+                      <ul style={{ marginLeft: theme.spacing.md, color: theme.colors.textSecondary }}>
+                        <li><strong>Use lower values (10-20)</strong>: If recommendations seem too aggressive</li>
+                        <li><strong>Use higher values (50-100)</strong>: If recommendations seem too conservative</li>
+                      </ul>
+                    </div>
+                    
+                    <div style={{
+                      padding: theme.spacing.sm,
+                      backgroundColor: 'rgba(34, 197, 94, 0.1)',
+                      borderRadius: theme.borderRadius.sm,
+                      fontSize: theme.fontSizes.xs,
+                      color: theme.colors.text,
+                    }}>
+                      💡 <strong>Recommendation:</strong> Leave this field empty for automatic selection. The system chooses conservative values based on your income level for practical multi-year tax planning.
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
 
           {/* Optimize Button */}
           <button
@@ -418,6 +604,73 @@ const Optimizer: React.FC = () => {
               </div>
             </div>
 
+            {/* Tolerance Information */}
+            {result?.tolerance_info && (
+              <div style={{
+                backgroundColor: theme.colors.backgroundSecondary,
+                padding: theme.spacing.md,
+                borderRadius: theme.borderRadius.md,
+                border: `1px solid ${theme.colors.gray200}`,
+                marginBottom: theme.spacing.lg,
+              }}>
+                <h4 style={{
+                  margin: `0 0 ${theme.spacing.md} 0`,
+                  color: theme.colors.text,
+                  fontSize: theme.fontSizes.md,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: theme.spacing.xs,
+                }}>
+                  🎯 Optimization Tolerance
+                </h4>
+                
+                <div style={{
+                  display: 'grid',
+                  gridTemplateColumns: '1fr 1fr 1fr',
+                  gap: theme.spacing.sm,
+                  fontSize: theme.fontSizes.sm,
+                }}>
+                  <div>
+                    <div style={{ color: theme.colors.textSecondary, marginBottom: theme.spacing.xs }}>
+                      Tolerance Used
+                    </div>
+                    <div style={{ fontWeight: '600', fontFamily: theme.fonts.mono }}>
+                      {result.tolerance_info.tolerance_used_bp.toFixed(1)} bp ({(result.tolerance_info.tolerance_used_bp / 100).toFixed(2)}%)
+                    </div>
+                  </div>
+                  <div>
+                    <div style={{ color: theme.colors.textSecondary, marginBottom: theme.spacing.xs }}>
+                      Selection Method
+                    </div>
+                    <div style={{ fontWeight: '600' }}>
+                      {result.tolerance_info.tolerance_source === 'auto-selected' ? '🤖 Auto-selected' : '⚙️ Manual'}
+                    </div>
+                  </div>
+                  <div>
+                    <div style={{ color: theme.colors.textSecondary, marginBottom: theme.spacing.xs }}>
+                      Optimization Type
+                    </div>
+                    <div style={{ fontWeight: '600' }}>
+                      {result.adaptive_retry_used ? '🔄 Adaptive' : '📊 Standard'}
+                    </div>
+                  </div>
+                </div>
+                
+                {result.adaptive_retry_used && (
+                  <div style={{
+                    marginTop: theme.spacing.md,
+                    padding: theme.spacing.sm,
+                    backgroundColor: 'rgba(168, 85, 247, 0.1)',
+                    borderRadius: theme.borderRadius.sm,
+                    fontSize: theme.fontSizes.xs,
+                    lineHeight: '1.4',
+                  }}>
+                    <strong>🔄 Adaptive Optimization Applied:</strong> The system automatically retried with different tolerance settings and selected the result with the best balance of utilization and ROI ({result.adaptive_retry_used.selection_reason.replace('_', ' ')}).
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* Tax Breakdown Comparison */}
             <div style={{
               backgroundColor: theme.colors.backgroundSecondary,
@@ -476,7 +729,7 @@ const Optimizer: React.FC = () => {
                 📋 Income Details
               </h4>
               
-              {result?.sweet_spot?.income_details ? (
+              {useSeparateIncomes ? (
                 // Separate incomes case - show detailed breakdown
                 <div style={{
                   display: 'grid',
@@ -491,13 +744,27 @@ const Optimizer: React.FC = () => {
                   </div>
                   <div>
                     <div style={{ fontWeight: '600', marginBottom: theme.spacing.xs, color: theme.colors.textSecondary }}>Original</div>
-                    <div style={{ marginBottom: theme.spacing.xs, fontFamily: theme.fonts.mono }}>CHF {result.sweet_spot.income_details.original_sg?.toLocaleString() || '0'}</div>
-                    <div style={{ marginBottom: theme.spacing.xs, fontFamily: theme.fonts.mono }}>CHF {result.sweet_spot.income_details.original_fed?.toLocaleString() || '0'}</div>
+                    <div style={{ marginBottom: theme.spacing.xs, fontFamily: theme.fonts.mono }}>
+                      CHF {(sharedData.income_sg || 0).toLocaleString()}
+                    </div>
+                    <div style={{ marginBottom: theme.spacing.xs, fontFamily: theme.fonts.mono }}>
+                      CHF {(sharedData.income_fed || 0).toLocaleString()}
+                    </div>
                   </div>
                   <div>
                     <div style={{ fontWeight: '600', marginBottom: theme.spacing.xs, color: theme.colors.success }}>After Deduction</div>
-                    <div style={{ marginBottom: theme.spacing.xs, fontFamily: theme.fonts.mono }}>CHF {result.sweet_spot.income_details.after_deduction_sg?.toLocaleString() || '0'}</div>
-                    <div style={{ marginBottom: theme.spacing.xs, fontFamily: theme.fonts.mono }}>CHF {result.sweet_spot.income_details.after_deduction_fed?.toLocaleString() || '0'}</div>
+                    <div style={{ marginBottom: theme.spacing.xs, fontFamily: theme.fonts.mono }}>
+                      CHF {result?.sweet_spot?.income_details ? 
+                        result.sweet_spot.income_details.after_deduction_sg?.toLocaleString() :
+                        ((sharedData.income_sg || 0) - (result?.sweet_spot?.deduction || 0)).toLocaleString()
+                      }
+                    </div>
+                    <div style={{ marginBottom: theme.spacing.xs, fontFamily: theme.fonts.mono }}>
+                      CHF {result?.sweet_spot?.income_details ? 
+                        result.sweet_spot.income_details.after_deduction_fed?.toLocaleString() :
+                        ((sharedData.income_fed || 0) - (result?.sweet_spot?.deduction || 0)).toLocaleString()
+                      }
+                    </div>
                   </div>
                 </div>
               ) : (
@@ -510,7 +777,7 @@ const Optimizer: React.FC = () => {
                 }}>
                   <div>
                     <div style={{ fontWeight: '600', marginBottom: theme.spacing.xs, color: theme.colors.textSecondary }}>Original Income</div>
-                    <div style={{ fontFamily: theme.fonts.mono }}>CHF {(formData.income || 0).toLocaleString()}</div>
+                    <div style={{ fontFamily: theme.fonts.mono }}>CHF {(sharedData.income || 0).toLocaleString()}</div>
                   </div>
                   <div>
                     <div style={{ fontWeight: '600', marginBottom: theme.spacing.xs, color: theme.colors.success }}>After Deduction</div>

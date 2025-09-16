@@ -1,5 +1,6 @@
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { CliProvider } from './contexts/CliContext';
+import { SharedFormProvider } from './contexts/SharedFormContext';
 import AppShell from './components/AppShell';
 import ErrorBoundary from './components/ErrorBoundary';
 import Calculator from './views/Calculator';
@@ -10,18 +11,20 @@ import Debug from './views/Debug';
 function App() {
   return (
     <ErrorBoundary>
-      <CliProvider>
-        <Router>
-          <Routes>
-            <Route path="/" element={<AppShell />}>
-              <Route index element={<Calculator />} />
-              <Route path="optimizer" element={<Optimizer />} />
-              <Route path="scanner" element={<Scanner />} />
-              <Route path="debug" element={<Debug />} />
-            </Route>
-          </Routes>
-        </Router>
-      </CliProvider>
+      <SharedFormProvider>
+        <CliProvider>
+          <Router>
+            <Routes>
+              <Route path="/" element={<AppShell />}>
+                <Route index element={<Calculator />} />
+                <Route path="optimizer" element={<Optimizer />} />
+                <Route path="scanner" element={<Scanner />} />
+                <Route path="debug" element={<Debug />} />
+              </Route>
+            </Routes>
+          </Router>
+        </CliProvider>
+      </SharedFormProvider>
     </ErrorBoundary>
   );
 }
