@@ -119,50 +119,33 @@ $ZipSize = (Get-Item $ZipPath).Length / 1MB
 Write-Host "✅ Found release ZIP: $ZipPath ($([math]::Round($ZipSize, 2)) MB)" -ForegroundColor Green
 Write-Host ""
 
-# Confirm upload
-Write-Host "📤 Ready to upload:" -ForegroundColor Yellow
+# Display upload info
+Write-Host "📤 Uploading release:" -ForegroundColor Yellow
 Write-Host "   Version: v$Version" -ForegroundColor White
 Write-Host "   File: $ZipPath" -ForegroundColor White
 Write-Host "   Size: $([math]::Round($ZipSize, 2)) MB" -ForegroundColor White
 Write-Host "   Notes: $Notes" -ForegroundColor White
 Write-Host ""
 
-$Confirm = Read-Host "Continue with upload? (y/N)"
-if ($Confirm -ne 'y' -and $Confirm -ne 'Y') {
-    Write-Host "❌ Upload cancelled" -ForegroundColor Yellow
-    exit 0
-}
-
 # Create the release
 Write-Host ""
 Write-Host "🚀 Creating GitHub release..." -ForegroundColor Yellow
 
-$ReleaseBody = @"
-## TaxGlide v$Version
-
-$Notes
-
-### 📥 Download
-
-**Windows Users:** Download the ZIP file below, extract it, and run the executables.
-
-### 🛠️ What's Included
-
-- `taxglide.exe` - Command-line interface
-- `taxglide_gui.exe` - Graphical user interface (recommended)
-- `configs/` - Tax configuration files for different years
-- `README.txt` - Usage instructions
-
-### 🚀 Quick Start
-
-1. Download and extract the ZIP file
-2. Double-click `taxglide_gui.exe` to launch the GUI
-3. Or use `taxglide.exe --help` for command-line options
-
----
-
-*Released on $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') from local build*
-"@
+$ReleaseBody = "## TaxGlide v$Version`n`n" +
+    "$Notes`n`n" +
+    "### 📥 Download`n`n" +
+    "**Windows Users:** Download the ZIP file below, extract it, and run the executables.`n`n" +
+    "### 🛠️ What's Included`n`n" +
+    "- taxglide.exe - Command-line interface`n" +
+    "- taxglide_gui.exe - Graphical user interface (recommended)`n" +
+    "- configs/ - Tax configuration files for different years`n" +
+    "- README.txt - Usage instructions`n`n" +
+    "### 🚀 Quick Start`n`n" +
+    "1. Download and extract the ZIP file`n" +
+    "2. Double-click taxglide_gui.exe to launch the GUI`n" +
+    "3. Or use taxglide.exe --help for command-line options`n`n" +
+    "---`n`n" +
+    "*Released on $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') from local build*"
 
 try {
     # Create release with GitHub CLI
