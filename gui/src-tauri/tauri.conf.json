@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "taxglide_gui",
+  "productName": "TaxGlide",
   "version": "0.1.0",
   "identifier": "com.rewisch.taxglide-gui",
   "build": {

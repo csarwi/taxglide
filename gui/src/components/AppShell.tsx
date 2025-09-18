@@ -8,6 +8,7 @@ const AppShell: React.FC = () => {
     { path: '/', label: '🧮 Calculator', end: true },
     { path: '/optimizer', label: '🎯 Optimizer' },
     { path: '/scanner', label: '🔍 Scanner' },
+    { path: '/info', label: '📋 Info' },
     { path: '/debug', label: '🔧 Debug' },
   ];
 

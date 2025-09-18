@@ -7,6 +7,7 @@ import Calculator from './views/Calculator';
 import Optimizer from './views/Optimizer';
 import Scanner from './views/Scanner';
 import Debug from './views/Debug';
+import Info from './views/Info';
 
 function App() {
   return (
@@ -19,6 +20,7 @@ function App() {
                 <Route index element={<Calculator />} />
                 <Route path="optimizer" element={<Optimizer />} />
                 <Route path="scanner" element={<Scanner />} />
+                <Route path="info" element={<Info />} />
                 <Route path="debug" element={<Debug />} />
               </Route>
             </Routes>

@@ -361,6 +361,10 @@ gui/src-tauri/target/
 gui/src-tauri/gen/
 gui/dist/
 
+# Generated icon files (keep only SVG source + required ICO/ICNS)
+gui/src-tauri/icons/*.png
+gui/public/favicon.png
+
 # IDE/Editor directories
 gui/.vscode/
 .vscode/
