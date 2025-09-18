@@ -25,6 +25,8 @@ export interface CalcParams {
   filing_status?: string;
   pick: string[];
   skip: string[];
+  canton?: string;
+  municipality?: string;
 }
 
 // Updated CalcResult based on actual backend response
@@ -42,6 +44,10 @@ export interface CalcResult {
   picks: string[];
   filing_status: string;
   feuer_warning?: string;
+  canton_name?: string;
+  canton_key?: string;
+  municipality_name?: string;
+  municipality_key?: string;
 }
 
 // Optimize command parameters
@@ -55,6 +61,8 @@ export interface OptimizeParams {
   skip: string[];
   max_deduction?: number;
   tolerance_bp?: number;
+  canton?: string;
+  municipality?: string;
 }
 
 // Optimize command result based on contract documentation
@@ -125,6 +133,10 @@ export interface OptimizeResult {
     tolerance_source: string;
     explanation: string;
   };
+  canton_name?: string;
+  canton_key?: string;
+  municipality_name?: string;
+  municipality_key?: string;
 }
 
 // Scan command parameters
@@ -139,6 +151,8 @@ export interface ScanParams {
   pick: string[];
   skip: string[];
   include_local_marginal?: boolean;
+  canton?: string;
+  municipality?: string;
 }
 
 // Scan result row based on CLI scan command output
@@ -161,6 +175,26 @@ export interface ScanResultRow {
 
 export type ScanResult = ScanResultRow[];
 
+// Canton and Municipality interfaces
+export interface Municipality {
+  name: string;
+  key: string;
+}
+
+export interface Canton {
+  name: string;
+  key: string;
+  municipalities: Municipality[];
+}
+
+export interface AvailableLocations {
+  cantons: Canton[];
+  defaults: {
+    canton: string;
+    municipality: string;
+  };
+}
+
 // Context type
 interface CliContextType {
   status: CliStatusInfo | null;
@@ -170,6 +204,7 @@ interface CliContextType {
   calculate: (params: CalcParams) => Promise<CalcResult>;
   optimize: (params: OptimizeParams) => Promise<OptimizeResult>;
   scan: (params: ScanParams) => Promise<ScanResult>;
+  getAvailableLocations: () => Promise<AvailableLocations>;
   isReady: boolean;
 }
 
@@ -272,6 +307,24 @@ export const CliProvider: React.FC<CliProviderProps> = ({ children }) => {
     }
   };
 
+  // Get available cantons and municipalities
+  const getAvailableLocations = async (): Promise<AvailableLocations> => {
+    if (!isReady) {
+      throw new Error('CLI is not ready. Please initialize first.');
+    }
+
+    try {
+      console.log('Getting available cantons and municipalities...');
+      const result: AvailableLocations = await invoke('get_available_locations');
+      console.log('Available locations loaded:', result);
+      return result;
+    } catch (err) {
+      const errorMessage = err as string;
+      console.error('Failed to get available locations:', errorMessage);
+      throw new Error(errorMessage);
+    }
+  };
+
   // Get CLI status and auto-initialize on mount
   useEffect(() => {
     const getInitialStatusAndConnect = async () => {
@@ -329,6 +382,7 @@ export const CliProvider: React.FC<CliProviderProps> = ({ children }) => {
     calculate,
     optimize,
     scan,
+    getAvailableLocations,
     isReady,
   };
 

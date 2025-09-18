@@ -7,7 +7,33 @@ from taxglide.engine.federal import tax_federal, federal_marginal_hundreds
 from taxglide.engine.stgallen import simple_tax_sg
 from taxglide.engine.multipliers import apply_multipliers, MultPick
 from taxglide.engine.models import chf
-from taxglide.cli import _calc_once
+from taxglide.cli import _calc_with_new_configs
+
+
+def _calc_once(year: int, income: int, picks: list, filing_status: str = "single"):
+    """Helper function for tests to calculate taxes using new system."""
+    # Load configs using new system
+    from pathlib import Path
+    from taxglide.io.loader import load_switzerland_config, get_canton_and_municipality_config, create_legacy_multipliers_config
+    from taxglide.engine.models import StGallenConfig
+    
+    config_root = Path(__file__).resolve().parents[1] / "taxglide" / "configs"
+    config = load_switzerland_config(config_root, year)
+    canton, municipality = get_canton_and_municipality_config(config)  # Uses defaults
+    
+    # Convert to legacy format for compatibility
+    sg_config = StGallenConfig(
+        currency=config.currency,
+        model=canton.model,
+        rounding=canton.rounding,
+        brackets=canton.brackets,
+        override=canton.override
+    )
+    
+    fed_config = getattr(config.federal, filing_status)
+    mult_cfg = create_legacy_multipliers_config(municipality)
+    
+    return _calc_with_new_configs(sg_config, fed_config, mult_cfg, income, income, picks, filing_status)
 
 
 class TestFederalTaxCalculation:

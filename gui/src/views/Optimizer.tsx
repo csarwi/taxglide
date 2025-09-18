@@ -19,7 +19,6 @@ const Optimizer: React.FC = () => {
   const [result, setResult] = useState<OptimizeResult | null>(null);
   const [isOptimizing, setIsOptimizing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [useSeparateIncomes, setUseSeparateIncomes] = useState(false);
   const [showAdvancedOptions, setShowAdvancedOptions] = useState(false);
   const [showToleranceHelp, setShowToleranceHelp] = useState(false);
 
@@ -50,7 +49,7 @@ const Optimizer: React.FC = () => {
         ...sharedData,
         tolerance_bp: toleranceBp,
         // Clear unused income fields
-        ...(useSeparateIncomes ? {
+        ...(sharedData.useSeparateIncomes ? {
           income: undefined,
         } : {
           income_sg: undefined,
@@ -138,16 +137,16 @@ const Optimizer: React.FC = () => {
             }}>
               <input
                 type="checkbox"
-                checked={useSeparateIncomes}
-                onChange={(e) => setUseSeparateIncomes(e.target.checked)}
+                checked={sharedData.useSeparateIncomes || false}
+                onChange={(e) => handleInputChange('useSeparateIncomes', e.target.checked)}
                 style={{ marginRight: theme.spacing.sm }}
               />
-              Use separate St. Gallen/Federal incomes
+              Use separate Cantonal/Federal incomes
             </label>
           </div>
 
           {/* Income Inputs */}
-          {useSeparateIncomes ? (
+          {sharedData.useSeparateIncomes ? (
             <div style={{
               display: 'grid',
               gridTemplateColumns: '1fr 1fr',
@@ -162,7 +161,7 @@ const Optimizer: React.FC = () => {
                   fontSize: theme.fontSizes.sm,
                   color: theme.colors.text,
                 }}>
-                  St. Gallen Income (CHF)
+                  Cantonal Income (CHF)
                 </label>
                 <input
                   type="number"
@@ -208,7 +207,7 @@ const Optimizer: React.FC = () => {
                 value={sharedData.income || ''}
                 onChange={(e) => handleInputChange('income', e.target.value ? parseInt(e.target.value) : undefined)}
                 style={createInputStyle()}
-                required={!useSeparateIncomes}
+                required={!sharedData.useSeparateIncomes}
               />
             </div>
           )}
@@ -696,7 +695,7 @@ const Optimizer: React.FC = () => {
                 <div>
                   <div style={{ fontWeight: '600', marginBottom: theme.spacing.xs }}>Tax Component</div>
                   <div style={{ marginBottom: theme.spacing.xs }}>Federal Tax:</div>
-                  <div style={{ marginBottom: theme.spacing.xs }}>St. Gallen Tax:</div>
+                  <div style={{ marginBottom: theme.spacing.xs }}>{result?.canton_name || 'Cantonal'} Tax:</div>
                   <div style={{ marginBottom: theme.spacing.xs, borderTop: `1px solid ${theme.colors.gray300}`, paddingTop: theme.spacing.xs, fontWeight: '600' }}>Total Tax:</div>
                 </div>
                 <div>
@@ -729,7 +728,7 @@ const Optimizer: React.FC = () => {
                 📋 Income Details
               </h4>
               
-              {useSeparateIncomes ? (
+              {sharedData.useSeparateIncomes ? (
                 // Separate incomes case - show detailed breakdown
                 <div style={{
                   display: 'grid',
@@ -739,7 +738,7 @@ const Optimizer: React.FC = () => {
                 }}>
                   <div>
                     <div style={{ fontWeight: '600', marginBottom: theme.spacing.xs }}>Income Type</div>
-                    <div style={{ marginBottom: theme.spacing.xs }}>St. Gallen Income:</div>
+                    <div style={{ marginBottom: theme.spacing.xs }}>{result?.canton_name || 'Cantonal'} Income:</div>
                     <div style={{ marginBottom: theme.spacing.xs }}>Federal Income:</div>
                   </div>
                   <div>
@@ -787,6 +786,40 @@ const Optimizer: React.FC = () => {
               )}
             </div>
 
+            {/* Location Information */}
+            {(result?.canton_name || result?.municipality_name) && (
+              <div style={{
+                backgroundColor: theme.colors.backgroundSecondary,
+                border: `1px solid ${theme.colors.gray300}`,
+                borderRadius: theme.borderRadius.md,
+                padding: theme.spacing.md,
+                marginTop: theme.spacing.md,
+              }}>
+                <h4 style={{
+                  margin: `0 0 ${theme.spacing.sm} 0`,
+                  color: theme.colors.text,
+                  fontSize: theme.fontSizes.sm,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: theme.spacing.sm,
+                }}>
+                  📍 Location
+                </h4>
+                <div style={{
+                  fontSize: theme.fontSizes.xs,
+                  color: theme.colors.textSecondary,
+                  lineHeight: '1.5',
+                }}>
+                  {result.canton_name && (
+                    <div>Canton: <span style={{ fontWeight: '500', color: theme.colors.text }}>{result.canton_name}</span></div>
+                  )}
+                  {result.municipality_name && (
+                    <div>Municipality: <span style={{ fontWeight: '500', color: theme.colors.text }}>{result.municipality_name}</span></div>
+                  )}
+                </div>
+              </div>
+            )}
+            
             {/* Fire Department Tax Information */}
             {result?.sweet_spot?.multipliers?.feuer_warning && (
               <div style={{

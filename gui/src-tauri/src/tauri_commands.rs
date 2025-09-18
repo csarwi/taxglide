@@ -182,6 +182,28 @@ pub async fn get_cli_status(state: State<'_, CliState>) -> Result<CliStatusInfo,
     }
 }
 
+/// Get available cantons and municipalities
+#[tauri::command]
+pub async fn get_available_locations(
+    state: State<'_, CliState>
+) -> Result<crate::cli_types::AvailableLocations, String> {
+    info!("Loading available cantons and municipalities from CLI...");
+    
+    let cli_lock = state.cli.read().await;
+    let cli = cli_lock
+        .as_ref()
+        .ok_or_else(|| "CLI not initialized. Call init_cli first.".to_string())?;
+    
+    // Call CLI locations command
+    let result = cli.get_available_locations().await.map_err(|e| {
+        error!("Get locations command failed: {}", e);
+        format!("Get locations failed: {}", e)
+    })?;
+    
+    info!("Available locations loaded successfully from CLI");
+    Ok(result)
+}
+
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
 pub struct CliStatusInfo {
     pub initialized: bool,

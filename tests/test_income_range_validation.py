@@ -8,13 +8,60 @@ import pytest
 from decimal import Decimal
 from typing import List, Dict, Any, Tuple
 
-from taxglide.cli import _calc_once
+from taxglide.cli import _calc_with_new_configs
 from taxglide.engine.optimize import optimize_deduction
 from taxglide.engine.federal import tax_federal
 from taxglide.engine.stgallen import simple_tax_sg
 from taxglide.engine.multipliers import apply_multipliers, MultPick
 from taxglide.engine.models import chf
-from taxglide.io.loader import load_configs
+
+
+def _calc_once(year: int, income: int, picks: list, filing_status: str = "single"):
+    """Helper function for tests to calculate taxes using new system."""
+    from pathlib import Path
+    from taxglide.io.loader import load_switzerland_config, get_canton_and_municipality_config, create_legacy_multipliers_config
+    from taxglide.engine.models import StGallenConfig
+    
+    config_root = Path(__file__).resolve().parents[1] / "taxglide" / "configs"
+    config = load_switzerland_config(config_root, year)
+    canton, municipality = get_canton_and_municipality_config(config)  # Uses defaults
+    
+    # Convert to legacy format for compatibility
+    sg_config = StGallenConfig(
+        currency=config.currency,
+        model=canton.model,
+        rounding=canton.rounding,
+        brackets=canton.brackets,
+        override=canton.override
+    )
+    
+    fed_config = getattr(config.federal, filing_status)
+    mult_cfg = create_legacy_multipliers_config(municipality)
+    
+    return _calc_with_new_configs(sg_config, fed_config, mult_cfg, income, income, picks, filing_status)
+
+
+def _load_configs(config_root, year: int):
+    """Helper to load configs using new system."""
+    from taxglide.io.loader import load_switzerland_config, get_canton_and_municipality_config, create_legacy_multipliers_config
+    from taxglide.engine.models import StGallenConfig
+    
+    config = load_switzerland_config(config_root, year)
+    canton, municipality = get_canton_and_municipality_config(config)  # Uses defaults
+    
+    # Convert to legacy format for compatibility
+    sg_config = StGallenConfig(
+        currency=config.currency,
+        model=canton.model,
+        rounding=canton.rounding,
+        brackets=canton.brackets,
+        override=canton.override
+    )
+    
+    fed_config = config.federal.single  # Default to single filing status
+    mult_cfg = create_legacy_multipliers_config(municipality)
+    
+    return sg_config, fed_config, mult_cfg
 
 
 class TestIncomeRangeValidation:
@@ -423,7 +470,7 @@ class TestOptimizationRangeValidation:
     def test_optimization_reasonableness_across_incomes(self, config_root):
         """Test that optimization suggestions are reasonable across different income levels."""
         # Load configs
-        sg_cfg, fed_cfg, mult_cfg = load_configs(config_root, 2025)
+        sg_cfg, fed_cfg, mult_cfg = _load_configs(config_root, 2025)
         
         # Test scenarios: (income, max_deduction, description)
         test_scenarios = [
@@ -516,7 +563,7 @@ class TestOptimizationRangeValidation:
     def test_optimization_roi_progression(self, config_root):
         """Test that ROI generally decreases with higher incomes (diminishing returns)."""
         # Load configs
-        sg_cfg, fed_cfg, mult_cfg = load_configs(config_root, 2025)
+        sg_cfg, fed_cfg, mult_cfg = _load_configs(config_root, 2025)
         
         # Test progressive income levels with proportional deduction limits
         income_levels = [40000, 60000, 80000, 100000, 120000]
@@ -580,7 +627,7 @@ class TestOptimizationRangeValidation:
     def test_optimization_comprehensive_loop(self, config_root):
         """Test optimization across comprehensive income range with consistent parameters (like income validation loop)."""
         # Load configs
-        sg_cfg, fed_cfg, mult_cfg = load_configs(config_root, 2025)
+        sg_cfg, fed_cfg, mult_cfg = _load_configs(config_root, 2025)
         
         # Parameters similar to income range validation
         start_income = 20000   # Start where optimization makes sense
@@ -783,7 +830,7 @@ class TestEdgeCasesAndBoundaryConditions:
     def test_optimization_edge_cases(self, config_root):
         """Test optimization behavior at edge cases and boundary conditions."""
         # Load configs
-        sg_cfg, fed_cfg, mult_cfg = load_configs(config_root, 2025)
+        sg_cfg, fed_cfg, mult_cfg = _load_configs(config_root, 2025)
         
         def calc_fn(current_income: Decimal):
             sg_simple = simple_tax_sg(current_income, sg_cfg)

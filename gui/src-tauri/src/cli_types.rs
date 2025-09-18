@@ -53,6 +53,10 @@ pub struct CalcResult {
     pub picks: Vec<String>,
     pub filing_status: String,
     pub feuer_warning: Option<String>,
+    pub canton_name: Option<String>,
+    pub canton_key: Option<String>,
+    pub municipality_name: Option<String>,
+    pub municipality_key: Option<String>,
 }
 
 /// Tax optimization result
@@ -67,6 +71,10 @@ pub struct OptimizeResult {
     pub adaptive_retry_info: Option<serde_json::Value>,
     pub multipliers_applied: Vec<String>,
     pub tolerance_info: Option<ToleranceInfo>,
+    pub canton_name: Option<String>,
+    pub canton_key: Option<String>,
+    pub municipality_name: Option<String>,
+    pub municipality_key: Option<String>,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
@@ -239,6 +247,8 @@ pub struct CalcParams {
     pub filing_status: Option<String>,
     pub pick: Vec<String>,
     pub skip: Vec<String>,
+    pub canton: Option<String>,
+    pub municipality: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -254,6 +264,8 @@ pub struct OptimizeParams {
     pub skip: Vec<String>,
     pub tolerance_bp: Option<f64>,
     pub disable_adaptive: Option<bool>,
+    pub canton: Option<String>,
+    pub municipality: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -268,6 +280,8 @@ pub struct ScanParams {
     pub pick: Vec<String>,
     pub skip: Vec<String>,
     pub include_local_marginal: Option<bool>,
+    pub canton: Option<String>,
+    pub municipality: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -278,9 +292,37 @@ pub struct CompareBracketsParams {
     pub income_fed: Option<i32>,
     pub deduction: Option<i32>,
     pub filing_status: Option<String>,
+    pub canton: Option<String>,
+    pub municipality: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ValidateParams {
     pub year: i32,
+}
+
+/// Available locations response
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct AvailableLocations {
+    pub cantons: Vec<Canton>,
+    pub defaults: LocationDefaults,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct Canton {
+    pub name: String,
+    pub key: String,
+    pub municipalities: Vec<Municipality>,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct Municipality {
+    pub name: String,
+    pub key: String,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct LocationDefaults {
+    pub canton: String,
+    pub municipality: String,
 }

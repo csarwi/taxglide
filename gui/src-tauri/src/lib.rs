@@ -33,6 +33,7 @@ pub fn run() {
             tauri_commands::validate_config,
             tauri_commands::is_cli_ready,
             tauri_commands::get_cli_status,
+            tauri_commands::get_available_locations,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

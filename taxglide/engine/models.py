@@ -2,7 +2,7 @@
 from __future__ import annotations
 from dataclasses import dataclass
 from decimal import Decimal, ROUND_HALF_UP, getcontext
-from typing import List, Optional, Literal, Dict
+from typing import List, Optional, Literal, Dict, Union
 from pydantic import BaseModel, Field, field_validator, ConfigDict
 
 getcontext().prec = 28
@@ -49,10 +49,47 @@ class FederalConfig(BaseModel):
     segments: List[FedSegment]
     notes: Optional[str] = None
 
+# Multi-canton support models
+class MunicipalityMultiplier(BaseModel):
+    name: str
+    code: str
+    kind: Literal["factor"] = "factor"
+    rate: float
+    optional: bool = False
+    default_selected: bool = True
+
+class Municipality(BaseModel):
+    name: str
+    multipliers: Dict[str, MunicipalityMultiplier]
+    multiplier_order: List[str]
+
+class Canton(BaseModel):
+    name: str
+    abbreviation: str
+    model: Literal["percent_of_bracket_portion"] = "percent_of_bracket_portion"
+    rounding: RoundCfg
+    brackets: List[SgBracket]
+    override: Optional[SgOverride] = None
+    notes: Optional[str] = None
+    municipalities: Dict[str, Municipality]
+
+class FederalByFilingStatus(BaseModel):
+    single: FederalConfig
+    married_joint: FederalConfig
+
+class SwitzerlandConfig(BaseModel):
+    schema_version: str
+    currency: Literal["CHF"]
+    country: Literal["Switzerland"]
+    federal: FederalByFilingStatus
+    cantons: Dict[str, Canton]
+    defaults: Dict[str, str]
+
+# Legacy models kept for backward compatibility with existing code
 class MultItem(BaseModel):
     name: str
     code: str
-    kind: Literal["factor"] = "factor"  # all factors per your rule
+    kind: Literal["factor"] = "factor"
     rate: float
     exclusive_group: Optional[str] = None
     optional: bool = False

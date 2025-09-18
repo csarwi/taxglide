@@ -4,11 +4,11 @@ import pytest
 from pathlib import Path
 from decimal import Decimal
 
-from taxglide.io.loader import load_configs, load_configs_with_filing_status
+from taxglide.io.loader import load_switzerland_config, get_canton_and_municipality_config, create_legacy_multipliers_config
 from taxglide.engine.models import chf
 
-# Path to test configs (use the actual 2025 configs for now)
-CONFIG_ROOT = Path(__file__).resolve().parents[1] / "configs"
+# Path to test configs (use the configs from the taxglide package)
+CONFIG_ROOT = Path(__file__).resolve().parents[1] / "taxglide" / "configs"
 
 @pytest.fixture
 def config_root():
@@ -22,20 +22,65 @@ def year_2025():
 
 @pytest.fixture
 def configs_2025(config_root):
-    """Load 2025 tax configurations."""
-    sg_cfg, fed_cfg, mult_cfg = load_configs(config_root, 2025)
+    """Load 2025 tax configurations using new multi-canton system."""
+    config = load_switzerland_config(config_root, 2025)
+    canton, municipality = get_canton_and_municipality_config(config)  # Uses defaults
+    
+    # Convert to legacy format for compatibility with tests
+    from taxglide.engine.models import StGallenConfig
+    sg_cfg = StGallenConfig(
+        currency=config.currency,
+        model=canton.model,
+        rounding=canton.rounding,
+        brackets=canton.brackets,
+        override=canton.override
+    )
+    
+    fed_cfg = config.federal.single  # Default to single filing status
+    mult_cfg = create_legacy_multipliers_config(municipality)
+    
     return sg_cfg, fed_cfg, mult_cfg
 
 @pytest.fixture
 def configs_2025_married(config_root):
-    """Load 2025 tax configurations for married joint filing."""
-    sg_cfg, fed_cfg, mult_cfg = load_configs_with_filing_status(config_root, 2025, "married_joint")
+    """Load 2025 tax configurations for married joint filing using new system."""
+    config = load_switzerland_config(config_root, 2025)
+    canton, municipality = get_canton_and_municipality_config(config)  # Uses defaults
+    
+    # Convert to legacy format for compatibility with tests
+    from taxglide.engine.models import StGallenConfig
+    sg_cfg = StGallenConfig(
+        currency=config.currency,
+        model=canton.model,
+        rounding=canton.rounding,
+        brackets=canton.brackets,
+        override=canton.override
+    )
+    
+    fed_cfg = config.federal.married_joint
+    mult_cfg = create_legacy_multipliers_config(municipality)
+    
     return sg_cfg, fed_cfg, mult_cfg
 
 @pytest.fixture
 def configs_2025_single(config_root):
-    """Load 2025 tax configurations for single filing."""
-    sg_cfg, fed_cfg, mult_cfg = load_configs_with_filing_status(config_root, 2025, "single")
+    """Load 2025 tax configurations for single filing using new system."""
+    config = load_switzerland_config(config_root, 2025)
+    canton, municipality = get_canton_and_municipality_config(config)  # Uses defaults
+    
+    # Convert to legacy format for compatibility with tests
+    from taxglide.engine.models import StGallenConfig
+    sg_cfg = StGallenConfig(
+        currency=config.currency,
+        model=canton.model,
+        rounding=canton.rounding,
+        brackets=canton.brackets,
+        override=canton.override
+    )
+    
+    fed_cfg = config.federal.single
+    mult_cfg = create_legacy_multipliers_config(municipality)
+    
     return sg_cfg, fed_cfg, mult_cfg
 
 @pytest.fixture

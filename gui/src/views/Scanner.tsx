@@ -32,7 +32,6 @@ const Scanner: React.FC = () => {
   const [result, setResult] = useState<ScanResult | null>(null);
   const [isScanning, setIsScanning] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [useSeperateIncomes, setUseSeperateIncomes] = useState(false);
 
   // Handle form input changes
   const handleInputChange = (field: string, value: any) => {
@@ -64,7 +63,7 @@ const Scanner: React.FC = () => {
         d_step: dStep,
         include_local_marginal: includeMarginal,
         // Clear unused income fields
-        ...(useSeperateIncomes ? {
+        ...(sharedData.useSeparateIncomes ? {
           income: undefined,
         } : {
           income_sg: undefined,
@@ -193,7 +192,7 @@ const Scanner: React.FC = () => {
   }
 
   // Add separate income columns if different incomes are used
-  if (useSeperateIncomes && result && result.length > 0 && result[0].new_income_sg !== undefined) {
+  if (sharedData.useSeparateIncomes && result && result.length > 0 && result[0].new_income_sg !== undefined) {
     // Insert SG and Federal income columns after new_income
     const incomeIndex = columns.findIndex(col => col.key === 'new_income');
     columns.splice(incomeIndex + 1, 0, 
@@ -342,16 +341,16 @@ const Scanner: React.FC = () => {
             }}>
               <input
                 type="checkbox"
-                checked={useSeperateIncomes}
-                onChange={(e) => setUseSeperateIncomes(e.target.checked)}
+                checked={sharedData.useSeparateIncomes || false}
+                onChange={(e) => handleInputChange('useSeparateIncomes', e.target.checked)}
                 style={{ marginRight: theme.spacing.sm }}
               />
-              Use separate St. Gallen/Federal incomes
+              Use separate Cantonal/Federal incomes
             </label>
           </div>
 
           {/* Income Inputs */}
-          {useSeperateIncomes ? (
+          {sharedData.useSeparateIncomes ? (
             <div style={{
               display: 'grid',
               gridTemplateColumns: '1fr 1fr',
@@ -366,7 +365,7 @@ const Scanner: React.FC = () => {
                   fontSize: theme.fontSizes.sm,
                   color: theme.colors.text,
                 }}>
-                  St. Gallen Income (CHF)
+                  Cantonal Income (CHF)
                 </label>
               <input
                 type="number"
@@ -414,7 +413,7 @@ const Scanner: React.FC = () => {
                 value={sharedData.income || ''}
                 onChange={(e) => handleInputChange('income', e.target.value ? parseInt(e.target.value) : undefined)}
                 style={createInputStyle()}
-                required={!useSeperateIncomes}
+                required={!sharedData.useSeparateIncomes}
               />
             </div>
           )}

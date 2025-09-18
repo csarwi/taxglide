@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useCli, CalcParams, CalcResult } from '../contexts/CliContext';
 import { useSharedForm } from '../contexts/SharedFormContext';
 import { theme, createButtonStyle, createCardStyle, createInputStyle } from '../theme';
+import LocationSelector from '../components/LocationSelector';
 
 // Helper function to extract Feuerwehr amount from warning message
 const extractFeuerAmount = (warning: string): number | null => {
@@ -18,7 +19,6 @@ const Calculator: React.FC = () => {
   const [result, setResult] = useState<CalcResult | null>(null);
   const [isCalculating, setIsCalculating] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [useSeperateIncomes, setUseSeperateIncomes] = useState(false);
 
   // Handle form input changes
   const handleInputChange = (field: string, value: any) => {
@@ -46,7 +46,7 @@ const Calculator: React.FC = () => {
       const params: CalcParams = {
         ...sharedData,
         // Clear unused income fields
-        ...(useSeperateIncomes ? {
+        ...(sharedData.useSeparateIncomes ? {
           income: undefined,
         } : {
           income_sg: undefined,
@@ -127,6 +127,9 @@ const Calculator: React.FC = () => {
             />
           </div>
 
+          {/* Location Selector */}
+          <LocationSelector disabled={isCalculating} />
+
           {/* Income Mode Toggle */}
           <div style={{ marginBottom: theme.spacing.md }}>
             <label style={{
@@ -138,16 +141,16 @@ const Calculator: React.FC = () => {
             }}>
               <input
                 type="checkbox"
-                checked={useSeperateIncomes}
-                onChange={(e) => setUseSeperateIncomes(e.target.checked)}
+                checked={sharedData.useSeparateIncomes || false}
+                onChange={(e) => handleInputChange('useSeparateIncomes', e.target.checked)}
                 style={{ marginRight: theme.spacing.sm }}
               />
-              Use separate St. Gallen/Federal incomes
+              Use separate Cantonal/Federal incomes
             </label>
           </div>
 
           {/* Income Inputs */}
-          {useSeperateIncomes ? (
+          {sharedData.useSeparateIncomes ? (
             <div style={{
               display: 'grid',
               gridTemplateColumns: '1fr 1fr',
@@ -162,7 +165,7 @@ const Calculator: React.FC = () => {
                   fontSize: theme.fontSizes.sm,
                   color: theme.colors.text,
                 }}>
-                  St. Gallen Income (CHF)
+                  Cantonal Income (CHF)
                 </label>
               <input
                 type="number"
@@ -208,7 +211,7 @@ const Calculator: React.FC = () => {
                 value={sharedData.income || ''}
                 onChange={(e) => handleInputChange('income', e.target.value ? parseInt(e.target.value) : undefined)}
                 style={createInputStyle()}
-                required={!useSeperateIncomes}
+                required={!sharedData.useSeparateIncomes}
               />
             </div>
           )}
@@ -365,16 +368,50 @@ const Calculator: React.FC = () => {
                   <span style={{ fontFamily: theme.fonts.mono }}>CHF {result?.federal?.toLocaleString() || '0'}</span>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: theme.spacing.xs }}>
-                  <span>St. Gallen Income Tax:</span>
+                  <span>{result?.canton_name || 'Cantonal'} Income Tax:</span>
                   <span style={{ fontFamily: theme.fonts.mono }}>CHF {result?.sg_after_mult?.toLocaleString() || '0'}</span>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: theme.spacing.xs }}>
-                  <span>St. Gallen Simple Tax:</span>
+                  <span>{result?.canton_name || 'Cantonal'} Simple Tax:</span>
                   <span style={{ fontFamily: theme.fonts.mono }}>CHF {result?.sg_simple?.toLocaleString() || '0'}</span>
                 </div>
               </div>
             </div>
 
+            {/* Location Information */}
+            {(result?.canton_name || result?.municipality_name) && (
+              <div style={{
+                backgroundColor: theme.colors.backgroundSecondary,
+                border: `1px solid ${theme.colors.gray300}`,
+                borderRadius: theme.borderRadius.md,
+                padding: theme.spacing.md,
+                marginTop: theme.spacing.md,
+              }}>
+                <h4 style={{
+                  margin: `0 0 ${theme.spacing.sm} 0`,
+                  color: theme.colors.text,
+                  fontSize: theme.fontSizes.sm,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: theme.spacing.sm,
+                }}>
+                  📍 Location
+                </h4>
+                <div style={{
+                  fontSize: theme.fontSizes.xs,
+                  color: theme.colors.textSecondary,
+                  lineHeight: '1.5',
+                }}>
+                  {result.canton_name && (
+                    <div>Canton: <span style={{ fontWeight: '500', color: theme.colors.text }}>{result.canton_name}</span></div>
+                  )}
+                  {result.municipality_name && (
+                    <div>Municipality: <span style={{ fontWeight: '500', color: theme.colors.text }}>{result.municipality_name}</span></div>
+                  )}
+                </div>
+              </div>
+            )}
+            
             {/* Additional Tax Information */}
             {result.feuer_warning && (
               <div style={{

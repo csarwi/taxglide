@@ -1,6 +1,6 @@
 # TaxGlide 🇨🇭
 
-TaxGlide is a comprehensive Swiss tax calculator and optimizer tailored for St. Gallen (SG) cantonal and Swiss federal taxes. It is available both as a powerful CLI tool and as a modern desktop GUI application.
+TaxGlide is a comprehensive Swiss tax calculator and optimizer for Swiss federal and cantonal taxes. It supports multiple cantons and municipalities, each with their own tax rules and multipliers. Available both as a powerful CLI tool and as a modern desktop GUI application.
 
 The project was born from the idea of finding the optimal level of pension fund buy-ins — exploring where the ROI lies and how to structure multi-year deductions to maximize tax savings.
 
@@ -11,12 +11,13 @@ Almost entirely written with the support of ChatGPT-5 and Claude.
 ## Features
 
 ### 💱 Core Tax Engine
-- **Accurate Swiss Tax Models**: Federal (marginal brackets) + St. Gallen (progressive + multipliers)
-- **Married Joint Filing Support**: Income splitting for married couples per Swiss tax law 🆕
-- **Separate Income Support**: Different taxable incomes for SG and Federal taxes 🆕
+- **Multi-Canton Support**: Federal + multiple canton/municipality combinations 🆕
+- **Accurate Swiss Tax Models**: Federal (marginal brackets) + cantonal (progressive + multipliers)
+- **Married Joint Filing Support**: Income splitting for married couples per Swiss tax law
+- **Separate Income Support**: Different taxable incomes for cantonal and Federal taxes
 - **Smart Deduction Optimization**: Find optimal deduction amounts using ROI analysis with plateau detection
-- **Flexible Multiplier System**: Handle cantonal, communal, fire service, and church taxes
-- **Configuration-Driven**: Easy to update tax rules via YAML files
+- **Flexible Multiplier System**: Municipality-specific multipliers (cantonal, municipal, fire service, church)
+- **Configuration-Driven**: Easy to update tax rules and add new locations via unified YAML configuration
 
 ### 🖥️ Desktop GUI Application
 - **Modern Interface**: Beautiful Tauri-based desktop app with native performance
@@ -156,12 +157,17 @@ These official sources provide the legal foundation for TaxGlide's calculations 
 4. **Try the Scanner** for interactive deduction analysis with sortable tables
 
 ### CLI Commands
-Calculate taxes for 80,000 CHF income in 2025:
+Calculate taxes for 80,000 CHF income in 2025 (uses default location: St. Gallen):
 ```bash
 taxglide calc --year 2025 --income 80000
 ```
 
-Calculate with different SG and Federal incomes:
+Calculate with specific canton and municipality:
+```bash
+taxglide calc --year 2025 --income 80000 --canton st_gallen --municipality st_gallen_city
+```
+
+Calculate with different cantonal and Federal incomes:
 ```bash
 taxglide calc --year 2025 --income-sg 78000 --income-fed 80000
 ```
@@ -171,6 +177,11 @@ Find optimal deduction up to 10,000 CHF:
 taxglide optimize --year 2025 --income 80000 --max-deduction 10000
 ```
 
+Optimize with specific canton and municipality:
+```bash
+taxglide optimize --year 2025 --income 80000 --max-deduction 10000 --canton st_gallen --municipality st_gallen_city
+```
+
 Optimize with separate incomes:
 ```bash
 taxglide optimize --year 2025 --income-sg 78000 --income-fed 80000 --max-deduction 10000
@@ -178,14 +189,24 @@ taxglide optimize --year 2025 --income-sg 78000 --income-fed 80000 --max-deducti
 
 ## Configuration Structure
 
+TaxGlide now uses a unified configuration structure that supports multiple cantons and municipalities:
+
 ```
 configs/
 ├── 2025/
-│   ├── federal.yaml         # Swiss federal tax brackets (single filing)
-│   ├── federal_married.yaml # Swiss federal tax brackets (married joint filing) 🆕
-│   ├── stgallen.yaml        # SG cantonal tax brackets  
-│   └── multipliers.yaml     # Tax multipliers (cantonal, communal, etc.)
+│   └── switzerland.yaml     # Complete Swiss tax configuration including:
+│                           # - Federal tax brackets (single & married filing)
+│                           # - All canton definitions with tax brackets
+│                           # - Municipality definitions with multipliers
+│                           # - Default canton/municipality settings
 ```
+
+### Adding New Cantons/Municipalities
+To add support for new locations, simply edit `switzerland.yaml`:
+1. Add canton entry under `cantons` section with tax brackets
+2. Add municipalities under the canton with their multipliers
+3. No code changes required!
+4. Use via CLI: `--canton new_canton --municipality new_municipality`
 
 ## Commands Reference
 
@@ -203,8 +224,10 @@ taxglide calc --year 2025 --income-sg 73000 --income-fed 75000 [OPTIONS]
 
 **Options:**
 - `--income AMOUNT`: Single taxable income for both SG and Federal (CHF)
-- `--income-sg AMOUNT`: St. Gallen taxable income (CHF)
+- `--income-sg AMOUNT`: Cantonal taxable income (CHF)
 - `--income-fed AMOUNT`: Federal taxable income (CHF)
+- `--canton CODE`: Canton to use (e.g., 'st_gallen') - defaults to st_gallen 🆕
+- `--municipality CODE`: Municipality to use (e.g., 'st_gallen_city') - defaults to st_gallen_city 🆕
 - `--filing-status STATUS`: Filing status - `single` (default) or `married_joint` 🆕
 - `--pick CODE`: Include specific multiplier (e.g., `--pick FEUER` for fire service tax)
 - `--skip CODE`: Exclude multiplier (e.g., `--skip CHURCH` to skip church tax)
@@ -215,7 +238,10 @@ taxglide calc --year 2025 --income-sg 73000 --income-fed 75000 [OPTIONS]
 # Basic calculation with defaults (cantonal + communal)
 taxglide calc --year 2025 --income 75000
 
-# Separate SG and Federal incomes (e.g., different deductions)
+# Specify canton and municipality explicitly
+taxglide calc --year 2025 --income 75000 --canton st_gallen --municipality st_gallen_city
+
+# Separate cantonal and Federal incomes (e.g., different deductions)
 taxglide calc --year 2025 --income-sg 73000 --income-fed 75000
 
 # Include fire service tax
@@ -281,7 +307,7 @@ taxglide optimize --year 2025 --income-sg 83000 --income-fed 85000 --max-deducti
 
 **Options:**
 - `--income AMOUNT`: Single taxable income for both SG and Federal (CHF)
-- `--income-sg AMOUNT`: St. Gallen taxable income (CHF)
+- `--income-sg AMOUNT`: Cantonal taxable income (CHF)
 - `--income-fed AMOUNT`: Federal taxable income (CHF)
 - `--max-deduction AMOUNT`: Maximum deduction to explore (CHF)
 - `--step SIZE`: Deduction increment in CHF (default: 100)
@@ -369,7 +395,7 @@ taxglide scan --year 2025 --income-sg 88000 --income-fed 90000 --max-deduction 1
 
 **Options:**
 - `--income AMOUNT`: Single taxable income for both SG and Federal (CHF)
-- `--income-sg AMOUNT`: St. Gallen taxable income (CHF)
+- `--income-sg AMOUNT`: Cantonal taxable income (CHF)
 - `--income-fed AMOUNT`: Federal taxable income (CHF)
 - `--max-deduction AMOUNT`: Maximum deduction to explore (CHF)
 - `--d-step SIZE`: Deduction increment (default: 100)
@@ -482,7 +508,7 @@ taxglide compare-brackets --year 2025 --income-sg 80000 --income-fed 82000 [OPTI
 
 **Options:**
 - `--income AMOUNT`: Single taxable income for both SG and Federal (CHF)
-- `--income-sg AMOUNT`: St. Gallen taxable income (CHF)
+- `--income-sg AMOUNT`: Cantonal taxable income (CHF)
 - `--income-fed AMOUNT`: Federal taxable income (CHF)
 - `--deduction AMOUNT`: Amount to deduct (default: 0)
 
@@ -525,7 +551,7 @@ taxglide compare-brackets --year 2025 --income-sg 80000 --income-fed 82000 --ded
 
 ## Separate Income Functionality 🆕
 
-TaxGlide now supports different taxable incomes for SG and Federal taxes, which is common when:
+TaxGlide now supports different taxable incomes for cantonal and Federal taxes, which is common when:
 - Different deductions apply to cantonal vs. federal taxes
 - Income sources are treated differently by each tax system
 - You want to model "what-if" scenarios with varying income splits
@@ -567,7 +593,7 @@ When using separate incomes, optimization shows both resulting incomes:
 
 ## Married Joint Filing 🆕
 
-TaxGlide supports Swiss married joint filing which uses income splitting for SG taxes and separate tax tables for federal taxes.
+TaxGlide supports Swiss married joint filing which uses income splitting for cantonal taxes and separate tax tables for federal taxes.
 
 ```bash
 # Single filing (default)
@@ -589,18 +615,19 @@ taxglide optimize --year 2025 --income 94000 --max-deduction 10000 --filing-stat
 - **100 CHF steps**: Rates apply to each complete 100 CHF block
 - **Ceiling method**: Income rounded up to next 100 CHF for rate determination
 
-### St. Gallen Cantonal Taxes
+### Cantonal Taxes (e.g., St. Gallen)
 - **Progressive brackets**: Flat rate applied to portion of income in each bracket
-- **High-income override**: Flat percentage above threshold (currently 8.5% above 264,200 CHF)
-- **Multiplier system**: Cantonal and communal rates are **additive factors** applied to base tax
+- **High-income overrides**: Flat percentage above threshold where applicable (e.g., 8.5% above 264,200 CHF for SG)
+- **Municipality-specific multipliers**: Cantonal and municipal rates are **additive factors** applied to base tax
 
-### Multipliers (St. Gallen System)
+### Multipliers (Municipality-Specific)
+Example for St. Gallen city:
 - `KANTON` (1.05): Cantonal multiplier - 105% of simple tax
 - `GEMEINDE` (1.38): Municipal multiplier - 138% of simple tax  
 - `FEUER` (0.14): Fire service - 14% of simple tax
 - `CHURCH` (0.00): Church tax - varies by municipality/confession
 
-**Total SG Tax** = Simple Tax × (sum of selected multipliers)
+**Total Cantonal Tax** = Simple Tax × (sum of selected multipliers)
 
 ## Understanding Optimization Results
 
@@ -631,24 +658,33 @@ segments:
   - { from: 82000, to: 108800, at_income: 82000, base_tax_at: 1500.00, per100: 6.60 }
 ```
 
-### St. Gallen Configuration (`stgallen.yaml`)  
+### Cantonal Configuration (within `switzerland.yaml`)
 ```yaml
-brackets:
-  - { lower: 60200, width: 38100, rate_percent: 9.2 }
-  - { lower: 98300, width: 165900, rate_percent: 9.4 }
-override:
-  flat_percent_above:
-    threshold: 264200
-    percent: 8.5
+cantons:
+  st_gallen:
+    name: "St. Gallen"
+    abbreviation: "SG"
+    brackets:
+      - { lower: 60200, width: 38100, rate_percent: 9.2 }
+      - { lower: 98300, width: 165900, rate_percent: 9.4 }
+    override:
+      flat_percent_above:
+        threshold: 264200
+        percent: 8.5
+    municipalities:
+      st_gallen_city:
+        name: "St. Gallen"
+        multipliers:
+          canton: { name: "Kanton", code: "KANTON", rate: 1.05, default_selected: true }
+          municipal: { name: "Gemeinde", code: "GEMEINDE", rate: 1.38, default_selected: true }
 ```
 
-### Multipliers Configuration (`multipliers.yaml`)
-```yaml
-items:
-  - { name: "Kanton", code: "KANTON", rate: 1.05, default_selected: true }
-  - { name: "Gemeinde", code: "GEMEINDE", rate: 1.38, default_selected: true }
-  - { name: "Feuerwehr", code: "FEUER", rate: 0.14, default_selected: false }
-```
+### Complete Configuration Structure
+See the complete `switzerland.yaml` structure in `configs/2025/switzerland.yaml` which includes:
+- Federal tax brackets for both single and married filing statuses
+- Canton definitions with their tax brackets and rules
+- Municipality definitions with their specific multipliers
+- Default canton/municipality settings for backward compatibility
 
 ## Advanced Usage
 
@@ -685,9 +721,11 @@ taxglide plot --year 2025 --min 75000 --max 95000 \
 
 ## Contributing
 
-To add support for new cantons or update tax rules:
+To add support for new cantons or municipalities:
 
-1. Create new configuration files in `configs/YEAR/`
-2. Update validation rules in `loader.py` if needed
-3. Run `taxglide validate --year YEAR` to verify
-4. Add tests for edge cases and known tax scenarios
+1. Edit `configs/YEAR/switzerland.yaml` to add:
+   - New canton entry under `cantons` section
+   - Municipality entries under the canton with their multipliers
+2. Run `taxglide validate --year YEAR` to verify configuration
+3. Use new location: `taxglide calc --canton new_canton --municipality new_municipality`
+4. No code changes required - the system automatically supports new locations!

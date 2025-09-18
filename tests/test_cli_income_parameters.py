@@ -7,7 +7,44 @@ with the legacy single income parameter.
 import pytest
 from typer.testing import CliRunner
 
-from taxglide.cli import app, _resolve_incomes, _calc_once, _calc_once_separate
+from taxglide.cli import app, _resolve_incomes, _calc_with_new_configs
+
+
+def _load_new_configs(year: int, filing_status: str = "single"):
+    """Helper to load configs using new system."""
+    from pathlib import Path
+    from taxglide.io.loader import load_switzerland_config, get_canton_and_municipality_config, create_legacy_multipliers_config
+    from taxglide.engine.models import StGallenConfig
+    
+    config_root = Path(__file__).resolve().parents[1] / "taxglide" / "configs"
+    config = load_switzerland_config(config_root, year)
+    canton, municipality = get_canton_and_municipality_config(config)  # Uses defaults
+    
+    # Convert to legacy format for compatibility
+    sg_config = StGallenConfig(
+        currency=config.currency,
+        model=canton.model,
+        rounding=canton.rounding,
+        brackets=canton.brackets,
+        override=canton.override
+    )
+    
+    fed_config = getattr(config.federal, filing_status)
+    mult_cfg = create_legacy_multipliers_config(municipality)
+    
+    return sg_config, fed_config, mult_cfg
+
+
+def _calc_once(year: int, income: int, picks: list, filing_status: str = "single"):
+    """Helper function for tests to calculate taxes using new system."""
+    sg_config, fed_config, mult_cfg = _load_new_configs(year, filing_status)
+    return _calc_with_new_configs(sg_config, fed_config, mult_cfg, income, income, picks, filing_status)
+
+
+def _calc_once_separate(year: int, sg_income: int, fed_income: int, picks: list, filing_status: str = "single"):
+    """Helper function for tests to calculate taxes with separate incomes using new system."""
+    sg_config, fed_config, mult_cfg = _load_new_configs(year, filing_status)
+    return _calc_with_new_configs(sg_config, fed_config, mult_cfg, sg_income, fed_income, picks, filing_status)
 
 
 class TestResolveIncomes:

@@ -10,6 +10,9 @@ export interface SharedFormData {
   pick: string[];
   skip: string[];
   max_deduction?: number;
+  canton?: string;
+  municipality?: string;
+  useSeparateIncomes?: boolean;
 }
 
 interface SharedFormContextType {
@@ -23,6 +26,9 @@ const defaultSharedData: SharedFormData = {
   filing_status: 'single', // Default to single
   pick: [],
   skip: [],
+  canton: 'st_gallen', // Default to St. Gallen
+  municipality: 'st_gallen_city', // Default to St. Gallen City
+  useSeparateIncomes: false, // Default to single income mode
 };
 
 const SharedFormContext = createContext<SharedFormContextType | undefined>(undefined);

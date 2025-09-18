@@ -3,12 +3,43 @@
 import pytest
 from decimal import Decimal
 
-from taxglide.io.loader import load_configs_with_filing_status
 from taxglide.engine.federal import tax_federal_with_filing_status
 from taxglide.engine.stgallen import simple_tax_sg_with_filing_status
 from taxglide.engine.multipliers import apply_multipliers, MultPick
 from taxglide.engine.models import chf
-from taxglide.cli import _calc_once_separate
+from taxglide.cli import _calc_with_new_configs
+
+
+def _load_configs_with_filing_status(config_root, year: int, filing_status: str):
+    """Helper to load configs using new system with filing status."""
+    from taxglide.io.loader import load_switzerland_config, get_canton_and_municipality_config, create_legacy_multipliers_config
+    from taxglide.engine.models import StGallenConfig
+    
+    config = load_switzerland_config(config_root, year)
+    canton, municipality = get_canton_and_municipality_config(config)  # Uses defaults
+    
+    # Convert to legacy format for compatibility
+    sg_config = StGallenConfig(
+        currency=config.currency,
+        model=canton.model,
+        rounding=canton.rounding,
+        brackets=canton.brackets,
+        override=canton.override
+    )
+    
+    fed_config = getattr(config.federal, filing_status)
+    mult_cfg = create_legacy_multipliers_config(municipality)
+    
+    return sg_config, fed_config, mult_cfg
+
+
+def _calc_once_separate(year: int, sg_income: int, fed_income: int, picks: list, filing_status: str = "single"):
+    """Helper function for tests to calculate taxes with separate incomes using new system."""
+    from pathlib import Path
+    
+    config_root = Path(__file__).resolve().parents[1] / "taxglide" / "configs"
+    sg_config, fed_config, mult_cfg = _load_configs_with_filing_status(config_root, year, filing_status)
+    return _calc_with_new_configs(sg_config, fed_config, mult_cfg, sg_income, fed_income, picks, filing_status)
 
 
 class TestMarriedJointFiling:
@@ -24,7 +55,7 @@ class TestMarriedJointFiling:
         expected_fed_total = Decimal('1525.00')   # Direkte Bundessteuer
         
         # Load married joint configurations
-        sg_cfg, fed_cfg, mult_cfg = load_configs_with_filing_status(config_root, 2025, "married_joint")
+        sg_cfg, fed_cfg, mult_cfg = _load_configs_with_filing_status(config_root, 2025, "married_joint")
         
         # Calculate SG simple tax (uses income splitting)
         sg_simple = simple_tax_sg_with_filing_status(income_d, sg_cfg, "married_joint")
@@ -55,7 +86,7 @@ class TestMarriedJointFiling:
         income_d = chf(income)
         
         # Calculate for single filing
-        sg_cfg_single, fed_cfg_single, mult_cfg = load_configs_with_filing_status(config_root, 2025, "single")
+        sg_cfg_single, fed_cfg_single, mult_cfg = _load_configs_with_filing_status(config_root, 2025, "single")
         default_picks = [i.code for i in mult_cfg.items if i.default_selected and i.code != 'FEUER']
         
         sg_simple_single = simple_tax_sg_with_filing_status(income_d, sg_cfg_single, "single")
@@ -64,7 +95,7 @@ class TestMarriedJointFiling:
         total_single = sg_after_mult_single + fed_single
         
         # Calculate for married joint filing
-        sg_cfg_married, fed_cfg_married, _ = load_configs_with_filing_status(config_root, 2025, "married_joint")
+        sg_cfg_married, fed_cfg_married, _ = _load_configs_with_filing_status(config_root, 2025, "married_joint")
         
         sg_simple_married = simple_tax_sg_with_filing_status(income_d, sg_cfg_married, "married_joint")
         sg_after_mult_married = apply_multipliers(sg_simple_married, mult_cfg, MultPick(default_picks))
@@ -91,7 +122,7 @@ class TestMarriedJointFiling:
         income = 100000
         income_d = chf(income)
         
-        sg_cfg, _, _ = load_configs_with_filing_status(config_root, 2025, "single")
+        sg_cfg, _, _ = _load_configs_with_filing_status(config_root, 2025, "single")
         
         # Calculate tax at half income
         half_income = income_d / 2
@@ -116,8 +147,8 @@ class TestMarriedJointFiling:
     def test_federal_table_switching(self, config_root):
         """Test that correct federal tax tables are loaded for each filing status."""
         # This test verifies that different federal configurations are loaded
-        _, fed_cfg_single, _ = load_configs_with_filing_status(config_root, 2025, "single")
-        _, fed_cfg_married, _ = load_configs_with_filing_status(config_root, 2025, "married_joint")
+        _, fed_cfg_single, _ = _load_configs_with_filing_status(config_root, 2025, "single")
+        _, fed_cfg_married, _ = _load_configs_with_filing_status(config_root, 2025, "married_joint")
         
         # The configurations should be different (married should use federal_married.yaml)
         # We can test this by comparing tax at a specific income level
@@ -151,7 +182,7 @@ class TestMarriedJointFiling:
     
     def test_edge_cases_married_filing(self, config_root):
         """Test edge cases for married filing."""
-        sg_cfg, fed_cfg, mult_cfg = load_configs_with_filing_status(config_root, 2025, "married_joint")
+        sg_cfg, fed_cfg, mult_cfg = _load_configs_with_filing_status(config_root, 2025, "married_joint")
         
         # Test zero income
         zero_sg = simple_tax_sg_with_filing_status(chf(0), sg_cfg, "married_joint")
@@ -178,7 +209,7 @@ class TestMarriedFilingAccuracy:
         """Test married filing accuracy against known official values."""
         income_d = chf(income)
         
-        sg_cfg, fed_cfg, mult_cfg = load_configs_with_filing_status(config_root, 2025, "married_joint")
+        sg_cfg, fed_cfg, mult_cfg = _load_configs_with_filing_status(config_root, 2025, "married_joint")
         
         # Calculate taxes
         sg_simple = simple_tax_sg_with_filing_status(income_d, sg_cfg, "married_joint")

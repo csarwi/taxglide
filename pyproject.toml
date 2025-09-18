@@ -29,6 +29,9 @@ taxglide = "taxglide.cli:app"
 where = ["."]
 include = ["taxglide*"]
 
+[tool.setuptools.package-data]
+taxglide = ["configs/**/*.yaml"]
+
 [tool.pytest.ini_options]
 addopts = "-q"
 markers = [

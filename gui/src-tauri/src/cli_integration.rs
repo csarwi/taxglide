@@ -281,6 +281,14 @@ impl CliIntegration {
             args.extend(["--skip".to_string(), skip.clone()]);
         }
         
+        // Location parameters
+        if let Some(ref canton) = params.canton {
+            args.extend(["--canton".to_string(), canton.clone()]);
+        }
+        if let Some(ref municipality) = params.municipality {
+            args.extend(["--municipality".to_string(), municipality.clone()]);
+        }
+        
         args
     }
     
@@ -324,6 +332,14 @@ impl CliIntegration {
         }
         for skip in &params.skip {
             args.extend(["--skip".to_string(), skip.clone()]);
+        }
+        
+        // Location parameters
+        if let Some(ref canton) = params.canton {
+            args.extend(["--canton".to_string(), canton.clone()]);
+        }
+        if let Some(ref municipality) = params.municipality {
+            args.extend(["--municipality".to_string(), municipality.clone()]);
         }
         
         args
@@ -370,6 +386,14 @@ impl CliIntegration {
             args.extend(["--skip".to_string(), skip.clone()]);
         }
         
+        // Location parameters
+        if let Some(ref canton) = params.canton {
+            args.extend(["--canton".to_string(), canton.clone()]);
+        }
+        if let Some(ref municipality) = params.municipality {
+            args.extend(["--municipality".to_string(), municipality.clone()]);
+        }
+        
         args
     }
     
@@ -399,6 +423,14 @@ impl CliIntegration {
         // Filing status
         if let Some(ref filing_status) = params.filing_status {
             args.extend(["--filing-status".to_string(), filing_status.clone()]);
+        }
+        
+        // Location parameters
+        if let Some(ref canton) = params.canton {
+            args.extend(["--canton".to_string(), canton.clone()]);
+        }
+        if let Some(ref municipality) = params.municipality {
+            args.extend(["--municipality".to_string(), municipality.clone()]);
         }
         
         args
@@ -517,6 +549,22 @@ impl CliIntegration {
         
         let response: CliResponse<ValidateResult> = self
             .execute_command(&args_str, Duration::from_secs(30))
+            .await?;
+        
+        match response.payload {
+            CliPayload::Success { data } => Ok(data),
+            CliPayload::Error { error } => Err(CliError::CliError {
+                code: error.code,
+                message: error.message,
+            }),
+        }
+    }
+    
+    pub async fn get_available_locations(&self) -> Result<AvailableLocations, CliError> {
+        let args = ["locations", "--json"];
+        
+        let response: CliResponse<AvailableLocations> = self
+            .execute_command(&args, Duration::from_secs(10))
             .await?;
         
         match response.payload {

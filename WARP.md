@@ -4,7 +4,7 @@ This file provides guidance to WARP (warp.dev) when working with code in this re
 
 ## Project Overview
 
-TaxGlide is a comprehensive Swiss tax calculator and optimizer specifically designed for **St. Gallen (SG) cantonal + Swiss federal taxes**. It uses configuration-driven tax models with advanced deduction optimization algorithms to help users find optimal tax deduction amounts.
+TaxGlide is a comprehensive Swiss tax calculator and optimizer designed for **Swiss federal + cantonal taxes**. It supports multiple cantons and municipalities, each with their own tax rules and multipliers. The system uses configuration-driven tax models with advanced deduction optimization algorithms to help users find optimal tax deduction amounts.
 
 ## Quick Development Commands
 
@@ -20,11 +20,17 @@ python -m venv .venv
 
 ### Running the Application
 ```bash
-# Basic tax calculation
+# Basic tax calculation (uses default canton/municipality: St. Gallen)
 taxglide calc --year 2025 --income 80000
+
+# Tax calculation with specific canton and municipality
+taxglide calc --year 2025 --income 80000 --canton st_gallen --municipality st_gallen_city
 
 # Find optimal deduction
 taxglide optimize --year 2025 --income 80000 --max-deduction 10000
+
+# Optimization with specific location
+taxglide optimize --year 2025 --income 80000 --max-deduction 10000 --canton st_gallen --municipality st_gallen_city
 
 # Validate configuration files
 taxglide validate --year 2025
@@ -83,12 +89,14 @@ taxglide/
 ### Key Architectural Patterns
 
 #### 1. Configuration-Driven Design
-Tax rules are externalized in YAML files under `configs/YEAR/`:
-- `federal.yaml`: Swiss federal marginal brackets
-- `stgallen.yaml`: SG progressive brackets with override rules
-- `multipliers.yaml`: Cantonal, communal, and optional multipliers
+Tax rules are externalized in a unified YAML file under `configs/YEAR/`:
+- `switzerland.yaml`: Complete Swiss tax configuration including:
+  - Federal tax brackets (for single and married filing statuses)
+  - Canton definitions with their specific tax brackets and rules
+  - Municipality definitions with their multipliers and settings
+  - Default canton/municipality settings for backward compatibility
 
-This design allows updating tax rules without code changes and supports multiple tax years.
+This design allows updating tax rules without code changes, supports multiple tax years, and enables easy expansion to new cantons and municipalities.
 
 #### 2. Decimal Precision
 All monetary calculations use Python's `Decimal` type to avoid floating-point precision issues critical in financial calculations.
@@ -107,11 +115,12 @@ The optimization engine uses sophisticated ROI analysis with plateau detection t
 - Official ESTV rounding (down to nearest 5 rappen)
 - Handles complex bracket transitions for optimization
 
-#### St. Gallen Tax Model  
-- Progressive brackets with portion-based calculation
-- High-income override (flat 8.5% above 264,200 CHF)
-- Additive multiplier system (cantonal + communal factors)
-- Supports optional multipliers (fire service, church tax)
+#### Cantonal Tax Model  
+- Progressive brackets with portion-based calculation per canton
+- High-income overrides where applicable (e.g., flat 8.5% above 264,200 CHF for St. Gallen)
+- Municipality-specific multiplier systems (cantonal + municipal + optional factors)
+- Supports canton-specific multipliers (fire service, church tax, etc.)
+- Currently supports St. Gallen canton with St. Gallen city municipality
 
 #### Optimization Engine
 - Coarse + fine-grained ROI scanning
@@ -133,10 +142,13 @@ The codebase extensively uses Pydantic models for configuration validation and t
 ## Common Development Tasks
 
 ### Adding Support for New Cantons
-1. Create new YAML configurations in `configs/YEAR/canton_name.yaml`
-2. Add calculation logic in `engine/canton_name.py` following the federal/stgallen pattern
-3. Update `loader.py` validation rules
-4. Add CLI integration in `cli.py`
+1. Edit `configs/YEAR/switzerland.yaml` to add new canton definition:
+   - Add canton entry under `cantons` section with tax brackets
+   - Add municipalities under the canton with their specific multipliers
+   - Update validation rules if needed
+2. No code changes required - the system automatically supports new cantons
+3. Test with `taxglide validate --year YEAR` to verify configuration
+4. Use new canton via CLI: `--canton new_canton --municipality new_municipality`
 
 ### Adding New Tax Years
 1. Create `configs/YEAR/` directory

@@ -10,7 +10,7 @@ import sys
 import platform
 from datetime import datetime, timezone
 
-from .io.loader import load_configs, load_configs_with_filing_status
+from .io.loader import load_switzerland_config, get_canton_and_municipality_config
 from .engine.stgallen import simple_tax_sg, sg_bracket_info, simple_tax_sg_with_filing_status
 from .engine.federal import (
     tax_federal,
@@ -25,7 +25,7 @@ from .viz.curve import plot_curve
 
 app = typer.Typer(help="Swiss tax CLI (SG + Federal), config driven")
 
-CONFIG_ROOT = Path(__file__).resolve().parents[1] / "configs"
+CONFIG_ROOT = Path(__file__).parent / "configs"
 
 VALID_FILING_STATUSES = {"single", "married_joint"}
 
@@ -171,6 +171,17 @@ def _validate_filing_status(value: str) -> str:
             f"Filing status must be one of: {', '.join(sorted(VALID_FILING_STATUSES))}"
         )
     return value
+
+
+def _load_configs_new_style(year: int, canton_key: str = None, municipality_key: str = None, filing_status: str = "single"):
+    """Load configuration using new multi-canton approach."""
+    config = load_switzerland_config(CONFIG_ROOT, year)
+    canton, municipality = get_canton_and_municipality_config(config, canton_key, municipality_key)
+    
+    # Get the appropriate federal config based on filing status
+    fed_config = getattr(config.federal, filing_status)
+    
+    return config, canton, municipality, fed_config
 
 
 def _get_adaptive_tolerance_bp(income: int) -> float:
@@ -455,23 +466,20 @@ def _resolve_incomes(
     )
 
 
-def _calc_once(year: int, income: int, picks: List[str], filing_status: FilingStatus = "single"):
-    """Legacy function for backward compatibility. Uses same income for both SG and Federal."""
-    return _calc_once_separate(year, income, income, picks, filing_status)
-
-
-def _calc_once_separate(
-    year: int, 
+def _calc_with_new_configs(
+    sg_cfg, fed_cfg, mult_cfg, 
     sg_income: int, 
     fed_income: int, 
     picks: List[str], 
     filing_status: FilingStatus = "single"
 ):
-    """Calculate taxes with separate SG and Federal taxable incomes.
+    """Calculate taxes with separate cantonal and Federal taxable incomes using new multi-canton configs.
     
     Args:
-        year: Tax year
-        sg_income: St. Gallen taxable income
+        sg_cfg: Canton configuration (StGallenConfig format)
+        fed_cfg: Federal configuration
+        mult_cfg: Multipliers configuration
+        sg_income: Canton taxable income
         fed_income: Federal taxable income  
         picks: Multiplier codes to apply
         filing_status: Filing status ("single" or "married_joint")
@@ -479,7 +487,6 @@ def _calc_once_separate(
     Returns:
         Dict with tax calculation results
     """
-    sg_cfg, fed_cfg, mult_cfg = load_configs_with_filing_status(CONFIG_ROOT, year, filing_status)
     sg_income_d = chf(sg_income)
     fed_income_d = chf(fed_income)
 
@@ -570,16 +577,22 @@ def calc(
     skip: List[str] = typer.Option([], help="Codes to skip (overrides defaults)"),
     json_out: bool = typer.Option(False, "--json", help="Output JSON"),
     filing_status: str = typer.Option("single", callback=lambda ctx, param, value: _validate_filing_status(value) if value else "single", help="Filing status: single or married_joint"),
+    canton: Optional[str] = typer.Option(None, help="Canton to use for calculation (e.g., 'st_gallen')"),
+    municipality: Optional[str] = typer.Option(None, help="Municipality to use for calculation (e.g., 'st_gallen_city')"),
 ):
-    """Compute federal + SG taxes and show breakdown.
+    """Compute federal + cantonal taxes and show breakdown.
     
     Use either:
-      --income 80000                           (same income for both SG and Federal)
+      --income 80000                           (same income for both cantonal and Federal)
       --income-sg 78000 --income-fed 80000     (different incomes due to different deductions)
     
     Filing status:
       --filing-status single                   (default - individual filing)
       --filing-status married_joint            (married filing jointly - uses income splitting)
+      
+    Location:
+      --canton st_gallen                       (specify canton, defaults to st_gallen)
+      --municipality st_gallen_city            (specify municipality, defaults to st_gallen_city)
     """
     try:
         sg_income, fed_income = _resolve_incomes(income, income_sg, income_fed)
@@ -587,19 +600,36 @@ def calc(
         _handle_json_error(e, json_out)
         return
     
-    # auto-pick defaults
+    # Load configuration using new multi-canton approach
     try:
-        _, _, mult_cfg = load_configs(CONFIG_ROOT, year)
+        config, canton_cfg, municipality_cfg, fed_config = _load_configs_new_style(year, canton, municipality, filing_status)
+        # Store the actual keys that were resolved
+        canton_key = canton if canton else config.defaults["canton"]
+        municipality_key = municipality if municipality else config.defaults["municipality"]
     except Exception as e:
         _handle_json_error(e, json_out)
         return
+    
+    # Convert municipality multipliers to legacy format for compatibility
+    from .io.loader import create_legacy_multipliers_config
+    mult_cfg = create_legacy_multipliers_config(municipality_cfg)
         
     default_picks = [i.code for i in mult_cfg.items if i.default_selected]
     codes = set(default_picks) | set(pick)
     codes -= set(skip)
 
+    # Convert canton config to legacy StGallenConfig for compatibility
+    from .engine.models import StGallenConfig
+    sg_config = StGallenConfig(
+        currency=config.currency,
+        model=canton_cfg.model,
+        rounding=canton_cfg.rounding,
+        brackets=canton_cfg.brackets,
+        override=canton_cfg.override
+    )
+
     try:
-        res = _calc_once_separate(year, sg_income, fed_income, sorted(codes), filing_status)
+        res = _calc_with_new_configs(sg_config, fed_config, mult_cfg, sg_income, fed_income, sorted(codes), filing_status)
     except Exception as e:
         _handle_json_error(e, json_out)
         return
@@ -612,6 +642,12 @@ def calc(
         potential_feuer_tax = sg_simple_base * Decimal(str(feuer_item.rate))
         res["feuer_warning"] = f"⚠️ Missing FEUER tax: +{potential_feuer_tax:.0f} CHF (add --pick FEUER)"
     
+    # Add location information to response
+    res["canton_name"] = canton_cfg.name
+    res["canton_key"] = canton_key
+    res["municipality_name"] = municipality_cfg.name  
+    res["municipality_key"] = municipality_key
+    
     if json_out:
         response = _create_json_response(res)
         print(json.dumps(response, indent=2))
@@ -623,8 +659,8 @@ def calc(
 @app.command()
 def optimize(
     year: int = typer.Option(..., min=1900),
-    income: Optional[int] = typer.Option(None, min=0, help="Taxable income for both SG and Federal (CHF)"),
-    income_sg: Optional[int] = typer.Option(None, min=0, help="St. Gallen taxable income (CHF)"),
+    income: Optional[int] = typer.Option(None, min=0, help="Taxable income for both cantonal and Federal (CHF)"),
+    income_sg: Optional[int] = typer.Option(None, min=0, help="Cantonal taxable income (CHF)"),
     income_fed: Optional[int] = typer.Option(None, min=0, help="Federal taxable income (CHF)"),
     max_deduction: int = typer.Option(..., min=0),
     step: int = typer.Option(100, min=1, help="Deduction step (CHF)"),
@@ -634,18 +670,24 @@ def optimize(
     tolerance_bp: Optional[float] = typer.Option(None, help="Near-max ROI tolerance in basis points (auto-selected by income if not specified)"),
     filing_status: str = typer.Option("single", callback=lambda ctx, param, value: _validate_filing_status(value) if value else "single", help="Filing status: single or married_joint"),
     disable_adaptive: bool = typer.Option(False, "--disable-adaptive", help="Disable adaptive multi-tolerance retry for low utilization"),
+    canton: Optional[str] = typer.Option(None, help="Canton to use for calculation (e.g., 'st_gallen')"),
+    municipality: Optional[str] = typer.Option(None, help="Municipality to use for calculation (e.g., 'st_gallen_city')"),
 ):
     """Find optimal deduction amounts with adaptive multi-tolerance optimization.
     
     Use either:
-      --income 80000                           (same income for both SG and Federal)
+      --income 80000                           (same income for both cantonal and Federal)
       --income-sg 78000 --income-fed 80000     (different incomes due to different deductions)
+    
+    Location:
+      --canton st_gallen                       (specify canton, defaults to st_gallen)
+      --municipality st_gallen_city            (specify municipality, defaults to st_gallen_city)
     
     The optimizer automatically retries with different tolerance settings if low deduction
     utilization is detected (< 30% for incomes > 50K CHF), choosing the best ROI result.
     Use --disable-adaptive to use only the initial tolerance setting.
     
-    Note: Optimization assumes the deduction applies equally to both SG and Federal incomes.
+    Note: Optimization assumes the deduction applies equally to both cantonal and Federal incomes.
     """
     try:
         sg_income, fed_income = _resolve_incomes(income, income_sg, income_fed)
@@ -653,11 +695,26 @@ def optimize(
         _handle_json_error(e, json_out)
         return
     
+    # Load configuration using new multi-canton approach
     try:
-        sg_cfg, fed_cfg, mult_cfg = load_configs_with_filing_status(CONFIG_ROOT, year, filing_status)
+        config, canton_cfg, municipality_cfg, fed_cfg = _load_configs_new_style(year, canton, municipality, filing_status)
     except Exception as e:
         _handle_json_error(e, json_out)
         return
+    
+    # Convert municipality multipliers to legacy format for compatibility
+    from .io.loader import create_legacy_multipliers_config
+    mult_cfg = create_legacy_multipliers_config(municipality_cfg)
+    
+    # Convert canton config to legacy StGallenConfig for compatibility
+    from .engine.models import StGallenConfig
+    sg_cfg = StGallenConfig(
+        currency=config.currency,
+        model=canton_cfg.model,
+        rounding=canton_cfg.rounding,
+        brackets=canton_cfg.brackets,
+        override=canton_cfg.override
+    )
     default_picks = [i.code for i in mult_cfg.items if i.default_selected]
     codes = set(default_picks) | set(pick)
     codes -= set(skip)
@@ -840,6 +897,12 @@ def optimize(
     
     out = {k: coerce(v) for k, v in out.items()}
     
+    # Add location information to response
+    out["canton_name"] = canton_cfg.name
+    out["canton_key"] = canton if canton else config.defaults["canton"]
+    out["municipality_name"] = municipality_cfg.name  
+    out["municipality_key"] = municipality if municipality else config.defaults["municipality"]
+    
     if json_out:
         # Full detailed JSON output for programmatic use
         tolerance_explanation = {
@@ -874,12 +937,29 @@ def plot(
     opt_step: int = typer.Option(100, help="Deduction step for optimization"),
     opt_tolerance_bp: float = typer.Option(10.0, help="Tolerance (bp) used for plateau and sweet spot"),
     filing_status: str = typer.Option("single", callback=lambda ctx, param, value: _validate_filing_status(value) if value else "single", help="Filing status: single or married_joint"),
+    canton: Optional[str] = typer.Option(None, help="Canton to use for calculation (e.g., 'st_gallen')"),
+    municipality: Optional[str] = typer.Option(None, help="Municipality to use for calculation (e.g., 'st_gallen_city')"),
 ):
     """
     Plot the tax curve. If --annotate-sweet-spot is set (and opt_* provided),
     the figure will show a shaded plateau and a vertical line at the sweet spot.
     """
-    sg_cfg, fed_cfg, mult_cfg = load_configs_with_filing_status(CONFIG_ROOT, year, filing_status)
+    # Load configuration using new multi-canton approach
+    config, canton_cfg, municipality_cfg, fed_cfg = _load_configs_new_style(year, canton, municipality, filing_status)
+    
+    # Convert municipality multipliers to legacy format for compatibility
+    from .io.loader import create_legacy_multipliers_config
+    mult_cfg = create_legacy_multipliers_config(municipality_cfg)
+    
+    # Convert canton config to legacy StGallenConfig for compatibility
+    from .engine.models import StGallenConfig
+    sg_cfg = StGallenConfig(
+        currency=config.currency,
+        model=canton_cfg.model,
+        rounding=canton_cfg.rounding,
+        brackets=canton_cfg.brackets,
+        override=canton_cfg.override
+    )
     default_picks = [i.code for i in mult_cfg.items if i.default_selected]
     codes = set(default_picks) | set(pick)
     codes -= set(skip)
@@ -955,8 +1035,8 @@ def plot(
 @app.command()
 def scan(
     year: int = typer.Option(..., min=1900, help="Tax year (e.g., 2025)"),
-    income: Optional[int] = typer.Option(None, min=0, help="Original taxable income for both SG and Federal (CHF)"),
-    income_sg: Optional[int] = typer.Option(None, min=0, help="St. Gallen taxable income (CHF)"),
+    income: Optional[int] = typer.Option(None, min=0, help="Original taxable income for both cantonal and Federal (CHF)"),
+    income_sg: Optional[int] = typer.Option(None, min=0, help="Cantonal taxable income (CHF)"),
     income_fed: Optional[int] = typer.Option(None, min=0, help="Federal taxable income (CHF)"),
     max_deduction: int = typer.Option(..., min=0, help="Max deduction to explore (CHF)"),
     d_step: int = typer.Option(100, min=1, help="Deduction increment (CHF)"),
@@ -966,18 +1046,24 @@ def scan(
     json_out: bool = typer.Option(False, "--json", help="Print JSON instead of writing CSV"),
     include_local_marginal: bool = typer.Option(True, help="Compute local marginal % using Δ100"),
     filing_status: str = typer.Option("single", callback=lambda ctx, param, value: _validate_filing_status(value) if value else "single", help="Filing status: single or married_joint"),
+    canton: Optional[str] = typer.Option(None, help="Canton to use for calculation (e.g., 'st_gallen')"),
+    municipality: Optional[str] = typer.Option(None, help="Municipality to use for calculation (e.g., 'st_gallen_city')"),
 ):
     """
     Produce a dense table of values for deductions d = 0..max_deduction (step=d_step):
       - d, new_income
       - total tax, saved, ROI (%)
-      - SG simple, SG after multipliers, Federal
+      - Cantonal simple, cantonal after multipliers, Federal
       - federal segment (from/to/per100) for each new_income
       - local marginal percent (Δ100) around each new_income (optional)
     
     Use either:
-      --income 80000                           (same income for both SG and Federal)
+      --income 80000                           (same income for both cantonal and Federal)
       --income-sg 78000 --income-fed 80000     (different incomes due to different deductions)
+      
+    Location:
+      --canton st_gallen                       (specify canton, defaults to st_gallen)
+      --municipality st_gallen_city            (specify municipality, defaults to st_gallen_city)
     """
     try:
         sg_income, fed_income = _resolve_incomes(income, income_sg, income_fed)
@@ -985,11 +1071,26 @@ def scan(
         _handle_json_error(e, json_out)
         return
         
+    # Load configuration using new multi-canton approach
     try:
-        sg_cfg, fed_cfg, mult_cfg = load_configs_with_filing_status(CONFIG_ROOT, year, filing_status)
+        config, canton_cfg, municipality_cfg, fed_cfg = _load_configs_new_style(year, canton, municipality, filing_status)
     except Exception as e:
         _handle_json_error(e, json_out)
         return
+    
+    # Convert municipality multipliers to legacy format for compatibility
+    from .io.loader import create_legacy_multipliers_config
+    mult_cfg = create_legacy_multipliers_config(municipality_cfg)
+    
+    # Convert canton config to legacy StGallenConfig for compatibility
+    from .engine.models import StGallenConfig
+    sg_cfg = StGallenConfig(
+        currency=config.currency,
+        model=canton_cfg.model,
+        rounding=canton_cfg.rounding,
+        brackets=canton_cfg.brackets,
+        override=canton_cfg.override
+    )
     default_picks = [i.code for i in mult_cfg.items if i.default_selected]
     codes = set(default_picks) | set(pick)
     codes -= set(skip)
@@ -1101,7 +1202,7 @@ def validate(
 ):
     """Validate configuration files for given year."""
     try:
-        sg_cfg, fed_cfg, mult_cfg = load_configs(CONFIG_ROOT, year)
+        config = load_switzerland_config(CONFIG_ROOT, year)
         result_data = {"status": "valid", "year": year, "message": "All configurations valid"}
         
         if json_out:
@@ -1120,18 +1221,24 @@ def validate(
 @app.command() 
 def compare_brackets(
     year: int = typer.Option(..., min=1900),
-    income: Optional[int] = typer.Option(None, min=0, help="Taxable income for both SG and Federal (CHF)"),
-    income_sg: Optional[int] = typer.Option(None, min=0, help="St. Gallen taxable income (CHF)"),
+    income: Optional[int] = typer.Option(None, min=0, help="Taxable income for both cantonal and Federal (CHF)"),
+    income_sg: Optional[int] = typer.Option(None, min=0, help="Cantonal taxable income (CHF)"),
     income_fed: Optional[int] = typer.Option(None, min=0, help="Federal taxable income (CHF)"),
     deduction: int = typer.Option(0, "--deduction", min=0, help="Amount to deduct"),
     json_out: bool = typer.Option(False, "--json", help="Output JSON format"),
     filing_status: str = typer.Option("single", callback=lambda ctx, param, value: _validate_filing_status(value) if value else "single", help="Filing status: single or married_joint"),
+    canton: Optional[str] = typer.Option(None, help="Canton to use for calculation (e.g., 'st_gallen')"),
+    municipality: Optional[str] = typer.Option(None, help="Municipality to use for calculation (e.g., 'st_gallen_city')"),
 ):
     """Show which tax brackets apply before/after deduction.
     
     Use either:
-      --income 80000                           (same income for both SG and Federal)
+      --income 80000                           (same income for both cantonal and Federal)
       --income-sg 78000 --income-fed 80000     (different incomes due to different deductions)
+      
+    Location:
+      --canton st_gallen                       (specify canton, defaults to st_gallen)
+      --municipality st_gallen_city            (specify municipality, defaults to st_gallen_city)
     """
     try:
         sg_income, fed_income = _resolve_incomes(income, income_sg, income_fed)
@@ -1139,11 +1246,22 @@ def compare_brackets(
         _handle_json_error(e, json_out)
         return
         
+    # Load configuration using new multi-canton approach
     try:
-        sg_cfg, fed_cfg, mult_cfg = load_configs_with_filing_status(CONFIG_ROOT, year, filing_status)
+        config, canton_cfg, municipality_cfg, fed_cfg = _load_configs_new_style(year, canton, municipality, filing_status)
     except Exception as e:
         _handle_json_error(e, json_out)
         return
+    
+    # Convert canton config to legacy StGallenConfig for compatibility
+    from .engine.models import StGallenConfig
+    sg_cfg = StGallenConfig(
+        currency=config.currency,
+        model=canton_cfg.model,
+        rounding=canton_cfg.rounding,
+        brackets=canton_cfg.brackets,
+        override=canton_cfg.override
+    )
     
     # Original incomes
     original_sg_income = chf(sg_income)
@@ -1180,3 +1298,60 @@ def compare_brackets(
         print(json.dumps(response, indent=2))
     else:
         rprint(result_data)
+
+
+@app.command()
+def locations(
+    year: int = typer.Option(2025, help="Tax year to load locations for"),
+    json_out: bool = typer.Option(False, "--json", help="Output JSON format"),
+):
+    """Get available cantons and municipalities from configuration.
+    
+    Returns the list of supported cantons and their municipalities based on 
+    the switzerland.yaml configuration file for the specified year.
+    """
+    try:
+        # Load the switzerland configuration
+        config = load_switzerland_config(CONFIG_ROOT, year)
+        
+        # Build cantons list with municipalities
+        cantons_data = []
+        for canton_key, canton_config in config.cantons.items():
+            municipalities_data = []
+            
+            # Add municipalities for this canton
+            if hasattr(canton_config, 'municipalities') and canton_config.municipalities:
+                for municipality_key, municipality_config in canton_config.municipalities.items():
+                    municipalities_data.append({
+                        "name": municipality_config.name,
+                        "key": municipality_key
+                    })
+            
+            cantons_data.append({
+                "name": canton_config.name,
+                "key": canton_key,
+                "municipalities": municipalities_data
+            })
+        
+        # Prepare response data
+        result_data = {
+            "cantons": cantons_data,
+            "defaults": {
+                "canton": config.defaults["canton"],
+                "municipality": config.defaults["municipality"]
+            }
+        }
+        
+        if json_out:
+            response = _create_json_response(result_data)
+            print(json.dumps(response, indent=2))
+        else:
+            rprint(result_data)
+            
+    except Exception as e:
+        if json_out:
+            error_response = _create_json_error("VALIDATION_ERROR", str(e), {"year": year})
+            print(json.dumps(error_response, indent=2))
+        else:
+            rprint({"status": "error", "year": year, "error": str(e)})
+        raise typer.Exit(code=ERROR_CODES["VALIDATION_ERROR"])
