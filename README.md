@@ -1,12 +1,12 @@
 # TaxGlide 🇨🇭
 
+This is a vibe-coded project ✨. Almost everything—including this README.md—was generated with the help of ChatGPT-5 and Claude 🤖. Of course, I had to step in regularly to stop the LLMs from doing silly things 🙃, and I sure as hell didn’t catch everything. So yes, the codebase is probably a freaking mess 🧩—but hey, the program works and does exactly what I need 🚀.
+
 TaxGlide is a comprehensive Swiss tax calculator and optimizer for Swiss federal and cantonal taxes. It supports multiple cantons and municipalities, each with their own tax rules and multipliers. Available both as a powerful CLI tool and as a modern desktop GUI application.
 
 The project was born from the idea of finding the optimal level of pension fund buy-ins — exploring where the ROI lies and how to structure multi-year deductions to maximize tax savings.
 
 Built on configuration-driven tax models and advanced deduction optimization algorithms, TaxGlide helps you plan ahead with precision.
-
-Almost entirely written with the support of ChatGPT-5 and Claude.
 
 ## Features
 

@@ -40,7 +40,7 @@ $BuildConfig = @{
     OptimizationLevel = "max"
     
     # Include/exclude patterns for data files
-    IncludeDataDirs = @("configs")
+    IncludeDataDirs = @("taxglide/configs")
     
     # Python path settings
     PythonPath = ".\.venv\Scripts\python.exe"
@@ -56,7 +56,7 @@ $BuildConfig = @{
     CreateRelease = $true
     ReleaseDir = "releases"
     ProjectTomlPath = "pyproject.toml"
-    ReleaseFiles = @("configs")  # Additional files/folders to include in release
+    ReleaseFiles = @("taxglide/configs")  # Additional files/folders to include in release
 }
 
 # Function to build paths consistently
