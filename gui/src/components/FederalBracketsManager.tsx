@@ -95,8 +95,8 @@ const FederalBracketsManager: React.FC = () => {
       from: 0,
       to: null,
       at_income: 0,
-      base_tax_at: 0,
-      per100: 0,
+      base_tax_at: 0.00,
+      per100: 0.00,
     };
     setSegments([...segments, newSegment]);
   };
@@ -310,8 +310,14 @@ const FederalBracketsManager: React.FC = () => {
                       <input
                         type="number"
                         step="0.01"
-                        value={segment.base_tax_at}
-                        onChange={(e) => updateSegment(index, 'base_tax_at', Number(e.target.value))}
+                        min="0"
+                        value={segment.base_tax_at.toFixed(2)}
+                        onChange={(e) => {
+                          const value = parseFloat(e.target.value);
+                          if (!isNaN(value)) {
+                            updateSegment(index, 'base_tax_at', Math.round(value * 100) / 100);
+                          }
+                        }}
                         style={inputStyle}
                       />
                     </td>
@@ -319,8 +325,14 @@ const FederalBracketsManager: React.FC = () => {
                       <input
                         type="number"
                         step="0.01"
-                        value={segment.per100}
-                        onChange={(e) => updateSegment(index, 'per100', Number(e.target.value))}
+                        min="0"
+                        value={segment.per100.toFixed(2)}
+                        onChange={(e) => {
+                          const value = parseFloat(e.target.value);
+                          if (!isNaN(value)) {
+                            updateSegment(index, 'per100', Math.round(value * 100) / 100);
+                          }
+                        }}
                         style={inputStyle}
                       />
                     </td>

@@ -785,11 +785,15 @@ const CantonManager: React.FC = () => {
                         <input
                           type="number"
                           step="0.01"
-                          value={bracket.rate_percent}
+                          min="0"
+                          value={bracket.rate_percent.toFixed(2)}
                           onChange={(e) => {
-                            const newBrackets = [...editForm.brackets];
-                            newBrackets[index] = { ...bracket, rate_percent: parseFloat(e.target.value) || 0 };
-                            setEditForm({ ...editForm, brackets: newBrackets });
+                            const value = parseFloat(e.target.value);
+                            if (!isNaN(value)) {
+                              const newBrackets = [...editForm.brackets];
+                              newBrackets[index] = { ...bracket, rate_percent: Math.round(value * 100) / 100 };
+                              setEditForm({ ...editForm, brackets: newBrackets });
+                            }
                           }}
                           style={{
                             fontSize: theme.fontSizes.xs,
@@ -825,7 +829,7 @@ const CantonManager: React.FC = () => {
                 
                 <button
                   onClick={() => {
-                    const newBracket = { lower: 0, width: 10000, rate_percent: 1.0 };
+                    const newBracket = { lower: 0, width: 10000, rate_percent: 1.00 };
                     setEditForm({ ...editForm, brackets: [...editForm.brackets, newBracket] });
                   }}
                   style={{

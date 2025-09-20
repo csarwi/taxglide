@@ -30,7 +30,7 @@ interface TaxMultiplier {
   name: string;
   code: string;
   kind: string;
-  rate: number;
+  rate: number; // Always stored with 2 decimal places
   optional?: boolean;
   default_selected: boolean;
 }
@@ -151,7 +151,7 @@ const MunicipalityManager: React.FC = () => {
           name: 'Kanton',
           code: 'KANTON',
           kind: 'factor',
-          rate: 1.0,
+          rate: 1.00,
           optional: false,
           default_selected: true
         },
@@ -159,7 +159,7 @@ const MunicipalityManager: React.FC = () => {
           name: 'Gemeinde',
           code: 'GEMEINDE',
           kind: 'factor',
-          rate: 1.0,
+          rate: 1.00,
           optional: false,
           default_selected: true
         }
@@ -185,7 +185,7 @@ const MunicipalityManager: React.FC = () => {
       name: 'New Multiplier',
       code: 'NEW',
       kind: 'factor',
-      rate: 1.0,
+      rate: 1.00,
       optional: false,
       default_selected: false
     };
@@ -598,8 +598,14 @@ const MunicipalityManager: React.FC = () => {
                 <input
                   type="number"
                   step="0.01"
-                  value={multiplier.rate}
-                  onChange={(e) => updateMultiplier(key, 'rate', Number(e.target.value))}
+                  min="0"
+                  value={multiplier.rate.toFixed(2)}
+                  onChange={(e) => {
+                    const value = parseFloat(e.target.value);
+                    if (!isNaN(value)) {
+                      updateMultiplier(key, 'rate', Math.round(value * 100) / 100);
+                    }
+                  }}
                   disabled={!isEditing}
                   style={{ 
                     ...inputStyle, 
