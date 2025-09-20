@@ -60,28 +60,31 @@ cantons:
       - {lower: 33800, width: 26400, rate_percent: 8.0}
       - {lower: 60200, width: 38100, rate_percent: 9.2}
       - {lower: 98300, width: 165900, rate_percent: 9.4}
+    override:
+      flat_percent_above: {threshold: 264200.0, percent: 8.5}
+    notes: Art. 50 h) einfache Steuer (SG).
     municipalities:
       st_gallen_city:
         name: St. Gallen
         multipliers:
-          church: {name: Church, code: CHURCH, kind: factor, rate: 0.0, optional: true, default_selected: false}
           canton: {name: Kanton, code: KANTON, kind: factor, rate: 1.05, optional: false, default_selected: true}
-          fire_service: {name: Feuerwehr, code: FEUER, kind: factor, rate: 0.14, optional: false, default_selected: false}
           municipal: {name: Gemeinde, code: GEMEINDE, kind: factor, rate: 1.38, optional: false, default_selected: true}
+          fire_service: {name: Feuerwehr, code: FEUER, kind: factor, rate: 0.14, optional: false, default_selected: false}
+          church: {name: Church, code: CHURCH, kind: factor, rate: 0.0, optional: true, default_selected: false}
         multiplier_order: [Kanton, Gemeinde, Feuerwehr, Church]
       Goldach:
         name: Goldach
         multipliers:
-          church: {name: Church, code: CHURCH, kind: factor, rate: 0.0, optional: true, default_selected: false}
-          fire_service: {name: Feuerwehr, code: FEUER, kind: factor, rate: 0.0035, optional: false, default_selected: false}
           canton: {name: Kanton, code: KANTON, kind: factor, rate: 1.05, optional: false, default_selected: true}
           municipal: {name: Gemeinde, code: GEMEINDE, kind: factor, rate: 0.95, optional: false, default_selected: true}
+          fire_service: {name: Feuerwehr, code: FEUER, kind: factor, rate: 0.0035, optional: false, default_selected: false}
+          church: {name: Church, code: CHURCH, kind: factor, rate: 0.0, optional: true, default_selected: false}
         multiplier_order: [Kanton, Gemeinde, Feuerwehr, Church]
       balgach:
         name: Balgach
         multipliers:
-          canton: {name: Kanton, code: KANTON, kind: factor, rate: 1.05, optional: false, default_selected: true}
-          municipal: {name: Gemeinde, code: GEMEINDE, kind: factor, rate: 0.61, optional: false, default_selected: true}
+          canton: {name: Kanton, code: KANTON, kind: factor, rate: 1.08, optional: false, default_selected: true}
+          municipal: {name: Gemeinde, code: GEMEINDE, kind: factor, rate: 1.21, optional: false, default_selected: true}
         multiplier_order: [Kanton, Gemeinde]
 
 # # Default canton and municipality for backward compatibility

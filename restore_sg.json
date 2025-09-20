@@ -1,0 +1,122 @@
+{
+  "name": "St. Gallen",
+  "abbreviation": "SG",
+  "model": "percent_of_bracket_portion",
+  "rounding": {
+    "taxable_step": 1,
+    "tax_round_to": 0,
+    "scope": "as_official"
+  },
+  "brackets": [
+    {
+      "lower": 0,
+      "width": 11600,
+      "rate_percent": 0.0
+    },
+    {
+      "lower": 11600,
+      "width": 4200,
+      "rate_percent": 4.0
+    },
+    {
+      "lower": 15800,
+      "width": 18000,
+      "rate_percent": 6.0
+    },
+    {
+      "lower": 33800,
+      "width": 26400,
+      "rate_percent": 8.0
+    },
+    {
+      "lower": 60200,
+      "width": 38100,
+      "rate_percent": 9.2
+    },
+    {
+      "lower": 98300,
+      "width": 165900,
+      "rate_percent": 9.4
+    }
+  ],
+  "override_config": null,
+  "notes": null,
+  "municipalities": {
+    "st_gallen_city": {
+      "name": "St. Gallen",
+      "multipliers": {
+        "canton": {
+          "name": "Kanton",
+          "code": "KANTON",
+          "kind": "factor",
+          "rate": 1.05,
+          "optional": false,
+          "default_selected": true
+        },
+        "municipal": {
+          "name": "Gemeinde",
+          "code": "GEMEINDE",
+          "kind": "factor",
+          "rate": 1.38,
+          "optional": false,
+          "default_selected": true
+        },
+        "fire_service": {
+          "name": "Feuerwehr",
+          "code": "FEUER",
+          "kind": "factor",
+          "rate": 0.14,
+          "optional": false,
+          "default_selected": false
+        },
+        "church": {
+          "name": "Church",
+          "code": "CHURCH",
+          "kind": "factor",
+          "rate": 0.0,
+          "optional": true,
+          "default_selected": false
+        }
+      },
+      "multiplier_order": ["Kanton", "Gemeinde", "Feuerwehr", "Church"]
+    },
+    "Goldach": {
+      "name": "Goldach",
+      "multipliers": {
+        "canton": {
+          "name": "Kanton",
+          "code": "KANTON",
+          "kind": "factor",
+          "rate": 1.05,
+          "optional": false,
+          "default_selected": true
+        },
+        "municipal": {
+          "name": "Gemeinde",
+          "code": "GEMEINDE",
+          "kind": "factor",
+          "rate": 0.95,
+          "optional": false,
+          "default_selected": true
+        },
+        "fire_service": {
+          "name": "Feuerwehr",
+          "code": "FEUER",
+          "kind": "factor",
+          "rate": 0.0035,
+          "optional": false,
+          "default_selected": false
+        },
+        "church": {
+          "name": "Church",
+          "code": "CHURCH",
+          "kind": "factor",
+          "rate": 0.0,
+          "optional": true,
+          "default_selected": false
+        }
+      },
+      "multiplier_order": ["Kanton", "Gemeinde", "Feuerwehr", "Church"]
+    }
+  }
+}

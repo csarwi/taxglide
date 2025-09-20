@@ -1,28 +1,13 @@
-# Multi-Canton Swiss Tax Configuration
-# This file defines tax rules for multiple cantons and their municipalities
-
 schema_version: '2.0'
 currency: CHF
 country: Switzerland
-
-# # Federal tax configuration (same for all cantons, varies by filing status)
 federal:
   single:
     currency: CHF
     rounding: {per_100_step: true, step_size: 100, step_mode: floor}
     segments:
       - {from: 0, to: 15200, at_income: 15200, base_tax_at: 0.0, per100: 0.0}
-      - {from: 15200, to: 33200, at_income: 15200, base_tax_at: 0.0, per100: 0.77}
-      - {from: 33200, to: 43500, at_income: 33200, base_tax_at: 138.6, per100: 0.88}
-      - {from: 43500, to: 58000, at_income: 43500, base_tax_at: 229.2, per100: 2.64}
-      - {from: 58000, to: 76100, at_income: 58000, base_tax_at: 612.0, per100: 2.97}
-      - {from: 76100, to: 82000, at_income: 76100, base_tax_at: 1149.55, per100: 5.94}
-      - {from: 82000, to: 108800, at_income: 82000, base_tax_at: 1500.0, per100: 6.6}
-      - {from: 108800, to: 141500, at_income: 108800, base_tax_at: 3268.8, per100: 8.8}
-      - {from: 141500, to: 184900, at_income: 141500, base_tax_at: 6146.4, per100: 11.0}
-      - {from: 184900, to: 793300, at_income: 184900, base_tax_at: 10920.4, per100: 13.2}
-      - {from: 793300, to: 793400, at_income: 793300, base_tax_at: 91229.2, per100: 0.0}
-      - {from: 793400, at_income: 793400, base_tax_at: 91241.0, per100: 11.5}
+      - {from: 15200, at_income: 15200, base_tax_at: 0.0, per100: 0.77}
     notes: Bundessteuer (Einzel). Marginal calc aligned to full hundreds.
   married_joint:
     currency: CHF
@@ -45,8 +30,6 @@ federal:
       - {from: 940800, to: 940900, at_income: 940800, base_tax_at: 108191.0, per100: 0.0}
       - {from: 940900, at_income: 940900, base_tax_at: 108203.5, per100: 11.5}
     notes: Bundessteuer (Verheiratete/Married). Marginal calc aligned to full hundreds.
-
-# # Canton definitions
 cantons:
   st_gallen:
     name: St. Gallen
@@ -60,29 +43,26 @@ cantons:
       - {lower: 33800, width: 26400, rate_percent: 8.0}
       - {lower: 60200, width: 38100, rate_percent: 9.2}
       - {lower: 98300, width: 165900, rate_percent: 9.4}
+    override:
+      flat_percent_above: {threshold: 264200.0, percent: 8.5}
+    notes: Art. 50 h) einfache Steuer (SG).
     municipalities:
       st_gallen_city:
         name: St. Gallen
         multipliers:
-          church: {name: Church, code: CHURCH, kind: factor, rate: 0.0, optional: true, default_selected: false}
           canton: {name: Kanton, code: KANTON, kind: factor, rate: 1.05, optional: false, default_selected: true}
-          fire_service: {name: Feuerwehr, code: FEUER, kind: factor, rate: 0.14, optional: false, default_selected: false}
           municipal: {name: Gemeinde, code: GEMEINDE, kind: factor, rate: 1.38, optional: false, default_selected: true}
+          fire_service: {name: Feuerwehr, code: FEUER, kind: factor, rate: 0.14, optional: false, default_selected: 
+              false}
+          church: {name: Church, code: CHURCH, kind: factor, rate: 0.0, optional: true, default_selected: false}
         multiplier_order: [Kanton, Gemeinde, Feuerwehr, Church]
       Goldach:
         name: Goldach
         multipliers:
-          church: {name: Church, code: CHURCH, kind: factor, rate: 0.0, optional: true, default_selected: false}
-          fire_service: {name: Feuerwehr, code: FEUER, kind: factor, rate: 0.0035, optional: false, default_selected: false}
           canton: {name: Kanton, code: KANTON, kind: factor, rate: 1.05, optional: false, default_selected: true}
           municipal: {name: Gemeinde, code: GEMEINDE, kind: factor, rate: 0.95, optional: false, default_selected: true}
+          fire_service: {name: Feuerwehr, code: FEUER, kind: factor, rate: 0.0035, optional: false, default_selected: 
+              false}
+          church: {name: Church, code: CHURCH, kind: factor, rate: 0.0, optional: true, default_selected: false}
         multiplier_order: [Kanton, Gemeinde, Feuerwehr, Church]
-      balgach:
-        name: Balgach
-        multipliers:
-          canton: {name: Kanton, code: KANTON, kind: factor, rate: 1.05, optional: false, default_selected: true}
-          municipal: {name: Gemeinde, code: GEMEINDE, kind: factor, rate: 0.61, optional: false, default_selected: true}
-        multiplier_order: [Kanton, Gemeinde]
-
-# # Default canton and municipality for backward compatibility
 defaults: {canton: st_gallen, municipality: st_gallen_city}

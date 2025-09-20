@@ -279,6 +279,258 @@ pub async fn get_available_locations(
     Ok(result)
 }
 
+// Config management commands
+
+/// List available tax years
+#[tauri::command]
+pub async fn list_years(
+    state: State<'_, CliState>
+) -> Result<crate::cli_types::AvailableYears, String> {
+    info!("Loading available tax years from CLI...");
+    
+    let cli_lock = state.cli.read().await;
+    let cli = cli_lock
+        .as_ref()
+        .ok_or_else(|| "CLI not initialized. Call init_cli first.".to_string())?;
+    
+    let result = cli.list_years().await.map_err(|e| {
+        error!("List years command failed: {}", e);
+        format!("List years failed: {}", e)
+    })?;
+    
+    info!("Available years loaded successfully from CLI");
+    Ok(result)
+}
+
+/// Get configuration summary for a year
+#[tauri::command]
+pub async fn get_config_summary(
+    state: State<'_, CliState>,
+    params: crate::cli_types::ConfigSummaryParams
+) -> Result<crate::cli_types::ConfigSummary, String> {
+    info!("Loading configuration summary for year {} from CLI...", params.year);
+    
+    let cli_lock = state.cli.read().await;
+    let cli = cli_lock
+        .as_ref()
+        .ok_or_else(|| "CLI not initialized. Call init_cli first.".to_string())?;
+    
+    let result = cli.get_config_summary(params).await.map_err(|e| {
+        error!("Get config summary command failed: {}", e);
+        format!("Get config summary failed: {}", e)
+    })?;
+    
+    info!("Configuration summary loaded successfully from CLI");
+    Ok(result)
+}
+
+/// Create new tax year
+#[tauri::command]
+pub async fn create_year(
+    state: State<'_, CliState>,
+    params: crate::cli_types::CreateYearParams
+) -> Result<crate::cli_types::YearOperationResult, String> {
+    info!("Creating tax year {} from {} via CLI...", params.target_year, params.source_year);
+    
+    let cli_lock = state.cli.read().await;
+    let cli = cli_lock
+        .as_ref()
+        .ok_or_else(|| "CLI not initialized. Call init_cli first.".to_string())?;
+    
+    let result = cli.create_year(params).await.map_err(|e| {
+        error!("Create year command failed: {}", e);
+        format!("Create year failed: {}", e)
+    })?;
+    
+    info!("Tax year created successfully via CLI");
+    Ok(result)
+}
+
+/// Update federal tax brackets
+#[tauri::command]
+pub async fn update_federal_brackets(
+    state: State<'_, CliState>,
+    params: crate::cli_types::UpdateFederalBracketsParams
+) -> Result<crate::cli_types::FederalBracketsOperationResult, String> {
+    info!("Updating federal brackets for {} filing status in year {} via CLI...", params.filing_status, params.year);
+    
+    let cli_lock = state.cli.read().await;
+    let cli = cli_lock
+        .as_ref()
+        .ok_or_else(|| "CLI not initialized. Call init_cli first.".to_string())?;
+    
+    let result = cli.update_federal_brackets(params).await.map_err(|e| {
+        error!("Update federal brackets command failed: {}", e);
+        format!("Update federal brackets failed: {}", e)
+    })?;
+    
+    info!("Federal brackets updated successfully via CLI");
+    Ok(result)
+}
+
+/// Create new canton
+#[tauri::command]
+pub async fn create_canton(
+    state: State<'_, CliState>,
+    params: crate::cli_types::CreateCantonParams
+) -> Result<crate::cli_types::CantonOperationResult, String> {
+    info!("Creating canton {} in year {} via CLI...", params.canton_key, params.year);
+    
+    let cli_lock = state.cli.read().await;
+    let cli = cli_lock
+        .as_ref()
+        .ok_or_else(|| "CLI not initialized. Call init_cli first.".to_string())?;
+    
+    let result = cli.create_canton(params).await.map_err(|e| {
+        error!("Create canton command failed: {}", e);
+        format!("Create canton failed: {}", e)
+    })?;
+    
+    info!("Canton created successfully via CLI");
+    Ok(result)
+}
+
+/// Update existing canton
+#[tauri::command]
+pub async fn update_canton(
+    state: State<'_, CliState>,
+    params: crate::cli_types::UpdateCantonParams
+) -> Result<crate::cli_types::CantonOperationResult, String> {
+    info!("Updating canton {} in year {} via CLI...", params.canton_key, params.year);
+    
+    let cli_lock = state.cli.read().await;
+    let cli = cli_lock
+        .as_ref()
+        .ok_or_else(|| "CLI not initialized. Call init_cli first.".to_string())?;
+    
+    let result = cli.update_canton(params).await.map_err(|e| {
+        error!("Update canton command failed: {}", e);
+        format!("Update canton failed: {}", e)
+    })?;
+    
+    info!("Canton updated successfully via CLI");
+    Ok(result)
+}
+
+/// Delete canton
+#[tauri::command]
+pub async fn delete_canton(
+    state: State<'_, CliState>,
+    params: crate::cli_types::DeleteCantonParams
+) -> Result<crate::cli_types::CantonOperationResult, String> {
+    info!("Deleting canton {} from year {} via CLI...", params.canton_key, params.year);
+    
+    let cli_lock = state.cli.read().await;
+    let cli = cli_lock
+        .as_ref()
+        .ok_or_else(|| "CLI not initialized. Call init_cli first.".to_string())?;
+    
+    let result = cli.delete_canton(params).await.map_err(|e| {
+        error!("Delete canton command failed: {}", e);
+        format!("Delete canton failed: {}", e)
+    })?;
+    
+    info!("Canton deleted successfully via CLI");
+    Ok(result)
+}
+
+/// Create new municipality
+#[tauri::command]
+pub async fn create_municipality(
+    state: State<'_, CliState>,
+    params: crate::cli_types::CreateMunicipalityParams
+) -> Result<crate::cli_types::MunicipalityOperationResult, String> {
+    info!("Creating municipality {} in canton {} for year {} via CLI...", params.municipality_key, params.canton_key, params.year);
+    
+    let cli_lock = state.cli.read().await;
+    let cli = cli_lock
+        .as_ref()
+        .ok_or_else(|| "CLI not initialized. Call init_cli first.".to_string())?;
+    
+    let result = cli.create_municipality(params).await.map_err(|e| {
+        error!("Create municipality command failed: {}", e);
+        format!("Create municipality failed: {}", e)
+    })?;
+    
+    info!("Municipality created successfully via CLI");
+    Ok(result)
+}
+
+/// Update existing municipality
+#[tauri::command]
+pub async fn update_municipality(
+    state: State<'_, CliState>,
+    params: crate::cli_types::UpdateMunicipalityParams
+) -> Result<crate::cli_types::MunicipalityOperationResult, String> {
+    info!("Updating municipality {} in canton {} for year {} via CLI...", params.municipality_key, params.canton_key, params.year);
+    
+    let cli_lock = state.cli.read().await;
+    let cli = cli_lock
+        .as_ref()
+        .ok_or_else(|| "CLI not initialized. Call init_cli first.".to_string())?;
+    
+    let result = cli.update_municipality(params).await.map_err(|e| {
+        error!("Update municipality command failed: {}", e);
+        format!("Update municipality failed: {}", e)
+    })?;
+    
+    info!("Municipality updated successfully via CLI");
+    Ok(result)
+}
+
+/// Get federal tax segments
+#[tauri::command]
+pub async fn get_federal_segments(
+    state: State<'_, CliState>,
+    params: crate::cli_types::GetFederalSegmentsParams
+) -> Result<crate::cli_types::FederalSegmentsResult, String> {
+    info!("Getting federal segments for {} filing status in year {} via CLI...", params.filing_status, params.year);
+    
+    let cli_lock = state.cli.read().await;
+    let cli = cli_lock
+        .as_ref()
+        .ok_or_else(|| "CLI not initialized. Call init_cli first.".to_string())?;
+    
+    let result = cli.get_federal_segments(params).await.map_err(|e| {
+        error!("Get federal segments command failed: {}", e);
+        format!("Get federal segments failed: {}", e)
+    })?;
+    
+    info!("Federal segments loaded successfully via CLI");
+    Ok(result)
+}
+
+/// Get canton details
+#[tauri::command]
+pub async fn cli_get_canton(
+    state: State<'_, CliState>,
+    year: i32,
+    canton_key: String
+) -> Result<String, String> {
+    info!("Getting canton details for {} in year {} via CLI...", canton_key, year);
+    
+    let cli_lock = state.cli.read().await;
+    let cli = cli_lock
+        .as_ref()
+        .ok_or_else(|| "CLI not initialized. Call init_cli first.".to_string())?;
+    
+    let params = crate::cli_types::GetCantonParams {
+        year,
+        canton_key: canton_key.clone(),
+    };
+    
+    let result = cli.get_canton(params).await.map_err(|e| {
+        error!("Get canton command failed: {}", e);
+        format!("Get canton failed: {}", e)
+    })?;
+    
+    // Return JSON string for easy consumption by frontend
+    serde_json::to_string(&result).map_err(|e| {
+        error!("Failed to serialize canton details: {}", e);
+        format!("Serialization failed: {}", e)
+    })
+}
+
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
 pub struct CliStatusInfo {
     pub initialized: bool,

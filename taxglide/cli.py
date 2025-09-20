@@ -22,6 +22,7 @@ from .engine.multipliers import apply_multipliers, MultPick
 from .engine.models import chf, FilingStatus
 from .engine.optimize import optimize_deduction, optimize_deduction_adaptive, validate_optimization_inputs
 from .viz.curve import plot_curve
+from .config.manager import ConfigManager
 
 app = typer.Typer(help="Swiss tax CLI (SG + Federal), config driven")
 
@@ -1355,3 +1356,623 @@ def locations(
         else:
             rprint({"status": "error", "year": year, "error": str(e)})
         raise typer.Exit(code=ERROR_CODES["VALIDATION_ERROR"])
+
+
+@app.command()
+def get_federal_segments(
+    year: int = typer.Option(..., help="Tax year to get federal segments for"),
+    filing_status: str = typer.Option("single", callback=lambda ctx, param, value: _validate_filing_status(value) if value else "single", help="Filing status: single or married_joint"),
+    json_out: bool = typer.Option(False, "--json", help="Output JSON format"),
+):
+    """Get federal tax segments for a specific year and filing status.
+    
+    Returns the detailed federal tax bracket configuration for editing.
+    """
+    try:
+        config_manager = ConfigManager(CONFIG_ROOT)
+        
+        if not config_manager.year_exists(year):
+            raise ValueError(f"Configuration for year {year} does not exist")
+        
+        config = config_manager.load_config(year)
+        
+        # Get the federal config for the filing status
+        fed_config = getattr(config.federal, filing_status)
+        
+        # Convert segments to dict format
+        segments_data = []
+        for segment in fed_config.segments:
+            segments_data.append({
+                "from": segment.from_,
+                "to": segment.to,
+                "at_income": segment.at_income,
+                "base_tax_at": segment.base_tax_at,
+                "per100": segment.per100
+            })
+        
+        result_data = {
+            "year": year,
+            "filing_status": filing_status,
+            "segments": segments_data,
+            "segments_count": len(segments_data)
+        }
+        
+        if json_out:
+            response = _create_json_response(result_data)
+            print(json.dumps(response, indent=2))
+        else:
+            rprint(result_data)
+            
+    except Exception as e:
+        if json_out:
+            error_response = _create_json_error("VALIDATION_ERROR", str(e), {"year": year, "filing_status": filing_status})
+            print(json.dumps(error_response, indent=2))
+        else:
+            rprint({"status": "error", "year": year, "filing_status": filing_status, "error": str(e)})
+        raise typer.Exit(code=ERROR_CODES["VALIDATION_ERROR"])
+
+
+@app.command()
+def config_summary(
+    year: int = typer.Option(2025, help="Tax year to get configuration summary for"),
+    json_out: bool = typer.Option(False, "--json", help="Output JSON format"),
+):
+    """Get comprehensive summary of tax configuration for a year.
+    
+    Shows overview of cantons, municipalities, tax brackets, and other
+    configuration details for the specified year.
+    """
+    try:
+        config_manager = ConfigManager(CONFIG_ROOT)
+        
+        if not config_manager.year_exists(year):
+            raise ValueError(f"Configuration for year {year} does not exist")
+        
+        summary = config_manager.get_config_summary(year)
+        
+        if json_out:
+            response = _create_json_response(summary)
+            print(json.dumps(response, indent=2))
+        else:
+            console, Panel, Text, Table = _create_console_with_imports()
+            
+            # Main summary
+            summary_text = Text()
+            summary_text.append(f"📋 TAX CONFIGURATION SUMMARY - {year}\n\n", style="bold green")
+            summary_text.append(f"Country: {summary['country']}\n", style="cyan")
+            summary_text.append(f"Currency: {summary['currency']}\n", style="cyan")
+            summary_text.append(f"Schema Version: {summary['schema_version']}\n", style="dim")
+            summary_text.append(f"Cantons: {summary['canton_count']}\n", style="yellow")
+            summary_text.append(f"Default Canton: {summary['defaults']['canton']} / {summary['defaults']['municipality']}")
+            
+            console.print(Panel(summary_text, title="Configuration Overview", border_style="green"))
+            
+            # Cantons table
+            cantons_table = Table(title="📍 Available Cantons & Municipalities", show_header=True, header_style="bold blue")
+            cantons_table.add_column("Canton", style="cyan")
+            cantons_table.add_column("Abbreviation", justify="center")
+            cantons_table.add_column("Tax Brackets", justify="right", style="yellow")
+            cantons_table.add_column("Municipalities", justify="right", style="green")
+            cantons_table.add_column("Municipality Names", style="dim")
+            
+            for canton in summary['cantons']:
+                muni_names = ", ".join([m['name'] for m in canton['municipalities']])
+                cantons_table.add_row(
+                    canton['name'],
+                    canton['abbreviation'],
+                    str(canton['bracket_count']),
+                    str(canton['municipality_count']),
+                    muni_names[:50] + "..." if len(muni_names) > 50 else muni_names
+                )
+            
+            console.print("\n", cantons_table)
+            
+    except Exception as e:
+        _handle_json_error(e, json_out)
+
+
+@app.command()
+def list_years(
+    json_out: bool = typer.Option(False, "--json", help="Output JSON format"),
+):
+    """List all available tax years.
+    
+    Shows which tax years have configuration files available.
+    """
+    try:
+        config_manager = ConfigManager(CONFIG_ROOT)
+        years = config_manager.get_available_years()
+        
+        result_data = {
+            "available_years": years,
+            "count": len(years)
+        }
+        
+        if json_out:
+            response = _create_json_response(result_data)
+            print(json.dumps(response, indent=2))
+        else:
+            console, Panel, Text, _ = _create_console_with_imports()
+            
+            years_text = Text()
+            years_text.append("📅 AVAILABLE TAX YEARS\n\n", style="bold green")
+            
+            if years:
+                years_text.append(f"Found {len(years)} tax year(s):\n", style="cyan")
+                for year in years:
+                    years_text.append(f"• {year}\n", style="yellow")
+            else:
+                years_text.append("No tax years found in configuration directory.", style="red")
+            
+            console.print(Panel(years_text, title="Tax Years", border_style="blue"))
+            
+    except Exception as e:
+        _handle_json_error(e, json_out)
+
+
+@app.command()
+def create_year(
+    source_year: int = typer.Option(..., help="Year to copy configuration from"),
+    target_year: int = typer.Option(..., help="New year to create"),
+    overwrite: bool = typer.Option(False, "--overwrite", help="Overwrite target year if it exists"),
+    json_out: bool = typer.Option(False, "--json", help="Output JSON format"),
+):
+    """Create new tax year by copying configuration from existing year.
+    
+    This copies the entire year directory including all configuration files.
+    Use --overwrite to replace existing year configurations.
+    """
+    try:
+        config_manager = ConfigManager(CONFIG_ROOT)
+        
+        result = config_manager.create_year(source_year, target_year, overwrite)
+        
+        if json_out:
+            response = _create_json_response(result)
+            print(json.dumps(response, indent=2))
+        else:
+            console, Panel, Text, _ = _create_console_with_imports()
+            
+            result_text = Text()
+            result_text.append("📋 YEAR CREATION SUCCESSFUL\n\n", style="bold green")
+            result_text.append(f"Source Year: {result['source_year']}\n", style="cyan")
+            result_text.append(f"Target Year: {result['target_year']}\n", style="yellow")
+            result_text.append(f"Status: {result['message']}", style="green")
+            
+            console.print(Panel(result_text, title="Create Year", border_style="green"))
+            
+    except Exception as e:
+        _handle_json_error(e, json_out)
+
+
+@app.command()
+def update_federal_brackets(
+    year: int = typer.Option(..., help="Tax year to update"),
+    filing_status: str = typer.Option(..., help="Filing status: single or married_joint"),
+    segments_file: str = typer.Option(..., help="JSON file containing federal tax segments"),
+    json_out: bool = typer.Option(False, "--json", help="Output JSON format"),
+):
+    """Update federal tax brackets from JSON file.
+    
+    The JSON file should contain an array of segment objects with:
+    - from: Lower income threshold
+    - to: Upper income threshold (null for last segment)
+    - at_income: Income level for base tax calculation
+    - base_tax_at: Base tax amount at the income level
+    - per100: Tax rate per 100 CHF above base
+    
+    Example JSON structure:
+    [
+        {"from": 0, "to": 15200, "at_income": 15200, "base_tax_at": 0.0, "per100": 0.0},
+        {"from": 15200, "to": 33200, "at_income": 15200, "base_tax_at": 0.0, "per100": 0.77}
+    ]
+    """
+    try:
+        import json as json_mod
+        
+        # Validate filing status
+        filing_status = _validate_filing_status(filing_status)
+        
+        # Load segments from file
+        segments_path = Path(segments_file)
+        if not segments_path.exists():
+            raise FileNotFoundError(f"Segments file not found: {segments_file}")
+        
+        with open(segments_path, 'r') as f:
+            segments_data = json_mod.load(f)
+        
+        if not isinstance(segments_data, list):
+            raise ValueError("Segments file must contain a JSON array of segment objects")
+        
+        config_manager = ConfigManager(CONFIG_ROOT)
+        result = config_manager.update_federal_brackets(year, filing_status, segments_data)
+        
+        if json_out:
+            response = _create_json_response(result)
+            print(json.dumps(response, indent=2))
+        else:
+            console, Panel, Text, _ = _create_console_with_imports()
+            
+            result_text = Text()
+            result_text.append("💰 FEDERAL BRACKETS UPDATED\n\n", style="bold green")
+            result_text.append(f"Year: {year}\n", style="cyan")
+            result_text.append(f"Filing Status: {filing_status}\n", style="yellow")
+            result_text.append(f"Segments Updated: {result['segments_count']}\n", style="green")
+            result_text.append(f"Status: {result['message']}", style="green")
+            
+            if result.get('backup_file'):
+                result_text.append(f"\n\nBackup created: {result['backup_file']}", style="dim")
+            
+            console.print(Panel(result_text, title="Update Federal Brackets", border_style="green"))
+            
+    except Exception as e:
+        _handle_json_error(e, json_out)
+
+
+@app.command()
+def create_canton(
+    year: int = typer.Option(..., help="Tax year to add canton to"),
+    canton_key: str = typer.Option(..., help="Unique key for the canton (e.g., 'zurich')"),
+    canton_file: str = typer.Option(..., help="JSON file containing canton configuration"),
+    json_out: bool = typer.Option(False, "--json", help="Output JSON format"),
+):
+    """Create new canton from JSON configuration file.
+    
+    The JSON file should contain canton configuration with:
+    - name: Full canton name
+    - abbreviation: Short abbreviation (e.g., 'ZH')
+    - brackets: Array of tax brackets with lower, width, rate_percent
+    - rounding: Rounding configuration
+    - municipalities: Municipality definitions
+    
+    Example canton structure:
+    {
+        "name": "Zurich",
+        "abbreviation": "ZH",
+        "brackets": [
+            {"lower": 0, "width": 10000, "rate_percent": 0.0},
+            {"lower": 10000, "width": 20000, "rate_percent": 5.0}
+        ],
+        "rounding": {"taxable_step": 1, "tax_round_to": 0, "scope": "as_official"},
+        "municipalities": {...}
+    }
+    """
+    try:
+        import json as json_mod
+        
+        # Load canton data from file
+        canton_path = Path(canton_file)
+        if not canton_path.exists():
+            raise FileNotFoundError(f"Canton file not found: {canton_file}")
+        
+        with open(canton_path, 'r') as f:
+            canton_data = json_mod.load(f)
+        
+        if not isinstance(canton_data, dict):
+            raise ValueError("Canton file must contain a JSON object with canton configuration")
+        
+        config_manager = ConfigManager(CONFIG_ROOT)
+        result = config_manager.create_canton(year, canton_key, canton_data)
+        
+        if json_out:
+            response = _create_json_response(result)
+            print(json.dumps(response, indent=2))
+        else:
+            console, Panel, Text, _ = _create_console_with_imports()
+            
+            result_text = Text()
+            result_text.append("🏛️ CANTON CREATED\n\n", style="bold green")
+            result_text.append(f"Year: {year}\n", style="cyan")
+            result_text.append(f"Canton Key: {result['canton_key']}\n", style="yellow")
+            result_text.append(f"Canton Name: {result['canton_name']}\n", style="green")
+            result_text.append(f"Status: {result['message']}", style="green")
+            
+            if result.get('backup_file'):
+                result_text.append(f"\n\nBackup created: {result['backup_file']}", style="dim")
+            
+            console.print(Panel(result_text, title="Create Canton", border_style="green"))
+            
+    except Exception as e:
+        _handle_json_error(e, json_out)
+
+
+@app.command()
+def update_canton(
+    year: int = typer.Option(..., help="Tax year to update canton in"),
+    canton_key: str = typer.Option(..., help="Canton key to update"),
+    canton_file: str = typer.Option(..., help="JSON file containing updated canton configuration"),
+    json_out: bool = typer.Option(False, "--json", help="Output JSON format"),
+):
+    """Update existing canton from JSON configuration file.
+    
+    Updates all canton properties including tax brackets, rounding rules,
+    and municipalities. See create_canton for JSON file format.
+    """
+    try:
+        import json as json_mod
+        
+        # Load canton data from file
+        canton_path = Path(canton_file)
+        if not canton_path.exists():
+            raise FileNotFoundError(f"Canton file not found: {canton_file}")
+        
+        with open(canton_path, 'r') as f:
+            canton_data = json_mod.load(f)
+        
+        if not isinstance(canton_data, dict):
+            raise ValueError("Canton file must contain a JSON object with canton configuration")
+        
+        config_manager = ConfigManager(CONFIG_ROOT)
+        result = config_manager.update_canton(year, canton_key, canton_data)
+        
+        if json_out:
+            response = _create_json_response(result)
+            print(json.dumps(response, indent=2))
+        else:
+            console, Panel, Text, _ = _create_console_with_imports()
+            
+            result_text = Text()
+            result_text.append("🏛️ CANTON UPDATED\n\n", style="bold green")
+            result_text.append(f"Year: {year}\n", style="cyan")
+            result_text.append(f"Canton Key: {result['canton_key']}\n", style="yellow")
+            result_text.append(f"Canton Name: {result['canton_name']}\n", style="green")
+            result_text.append(f"Status: {result['message']}", style="green")
+            
+            if result.get('backup_file'):
+                result_text.append(f"\n\nBackup created: {result['backup_file']}", style="dim")
+            
+            console.print(Panel(result_text, title="Update Canton", border_style="green"))
+            
+    except Exception as e:
+        _handle_json_error(e, json_out)
+
+
+@app.command()
+def delete_canton(
+    year: int = typer.Option(..., help="Tax year to delete canton from"),
+    canton_key: str = typer.Option(..., help="Canton key to delete"),
+    confirm: bool = typer.Option(False, "--confirm", help="Confirm deletion without prompting"),
+    json_out: bool = typer.Option(False, "--json", help="Output JSON format"),
+):
+    """Delete canton from configuration.
+    
+    This permanently removes the canton and all its municipalities.
+    Use --confirm to skip the confirmation prompt.
+    """
+    try:
+        config_manager = ConfigManager(CONFIG_ROOT)
+        
+        # Load config to get canton name for confirmation
+        config = config_manager.load_config(year)
+        if canton_key not in config.cantons:
+            raise ValueError(f"Canton '{canton_key}' does not exist in year {year}")
+        
+        canton_name = config.cantons[canton_key].name
+        
+        # Confirmation prompt (skip in JSON mode or if --confirm used)
+        if not json_out and not confirm:
+            confirmation = typer.confirm(
+                f"Are you sure you want to delete canton '{canton_name}' ({canton_key}) from year {year}? "
+                "This will permanently remove the canton and all its municipalities."
+            )
+            if not confirmation:
+                rprint("❌ Deletion cancelled.", style="yellow")
+                return
+        
+        result = config_manager.delete_canton(year, canton_key)
+        
+        if json_out:
+            response = _create_json_response(result)
+            print(json.dumps(response, indent=2))
+        else:
+            console, Panel, Text, _ = _create_console_with_imports()
+            
+            result_text = Text()
+            result_text.append("🗑️ CANTON DELETED\n\n", style="bold red")
+            result_text.append(f"Year: {year}\n", style="cyan")
+            result_text.append(f"Canton Key: {result['canton_key']}\n", style="yellow")
+            result_text.append(f"Canton Name: {result['canton_name']}\n", style="red")
+            result_text.append(f"Status: {result['message']}", style="green")
+            
+            if result.get('backup_file'):
+                result_text.append(f"\n\nBackup created: {result['backup_file']}", style="dim")
+            
+            console.print(Panel(result_text, title="Delete Canton", border_style="red"))
+            
+    except Exception as e:
+        _handle_json_error(e, json_out)
+
+
+@app.command()
+def get_canton(
+    year: int = typer.Option(..., help="Tax year to get canton from"),
+    canton_key: str = typer.Option(..., help="Canton key to retrieve"),
+    json_out: bool = typer.Option(False, "--json", help="Output JSON format"),
+):
+    """Get full canton configuration details.
+    
+    Returns complete canton configuration including tax brackets,
+    municipalities, rounding rules, and all other properties.
+    """
+    try:
+        config_manager = ConfigManager(CONFIG_ROOT)
+        config = config_manager.load_config(year)
+        
+        if canton_key not in config.cantons:
+            raise ValueError(f"Canton '{canton_key}' does not exist in year {year}")
+        
+        canton_config = config.cantons[canton_key]
+        
+        # Build canton data for output
+        canton_data = {
+            "name": canton_config.name,
+            "abbreviation": canton_config.abbreviation,
+            "brackets": [{
+                "lower": bracket.lower,
+                "width": bracket.width,
+                "rate_percent": bracket.rate_percent
+            } for bracket in canton_config.brackets],
+            "rounding": {
+                "taxable_step": canton_config.rounding.taxable_step,
+                "tax_round_to": canton_config.rounding.tax_round_to,
+                "scope": canton_config.rounding.scope
+            },
+            "municipalities": {}
+        }
+        
+        # Add municipalities if they exist
+        if hasattr(canton_config, 'municipalities') and canton_config.municipalities:
+            for muni_key, muni_config in canton_config.municipalities.items():
+                canton_data["municipalities"][muni_key] = {
+                    "name": muni_config.name,
+                    "multipliers": {},
+                    "multiplier_order": getattr(muni_config, 'multiplier_order', [])
+                }
+                
+                # Add multipliers if they exist
+                if hasattr(muni_config, 'multipliers') and muni_config.multipliers:
+                    for mult_key, mult_config in muni_config.multipliers.items():
+                        canton_data["municipalities"][muni_key]["multipliers"][mult_key] = {
+                            "name": mult_config.name,
+                            "code": mult_config.code,
+                            "kind": getattr(mult_config, 'kind', 'standard'),  # Default to 'standard' if not present
+                            "rate": mult_config.rate,
+                            "optional": getattr(mult_config, 'optional', None),
+                            "default_selected": mult_config.default_selected
+                        }
+        
+        if json_out:
+            response = _create_json_response(canton_data)
+            print(json.dumps(response, indent=2))
+        else:
+            console, Panel, Text, _ = _create_console_with_imports()
+            
+            result_text = Text()
+            result_text.append(f"🏛️ {canton_data['name']} ({canton_data['abbreviation']})\n\n", style="bold green")
+            result_text.append(f"Tax Brackets: {len(canton_data['brackets'])}\n", style="cyan")
+            result_text.append(f"Municipalities: {len(canton_data['municipalities'])}\n", style="yellow")
+            result_text.append(f"Rounding: Step {canton_data['rounding']['taxable_step']}, "
+                             f"Round to {canton_data['rounding']['tax_round_to']}", style="dim")
+            
+            console.print(Panel(result_text, title=f"Canton Details - {year}", border_style="green"))
+            
+    except Exception as e:
+        _handle_json_error(e, json_out)
+
+
+@app.command()
+def create_municipality(
+    year: int = typer.Option(..., help="Tax year to add municipality to"),
+    canton_key: str = typer.Option(..., help="Canton key to add municipality to"),
+    municipality_key: str = typer.Option(..., help="Unique key for the municipality"),
+    municipality_file: str = typer.Option(..., help="JSON file containing municipality configuration"),
+    json_out: bool = typer.Option(False, "--json", help="Output JSON format"),
+):
+    """Create new municipality in a canton from JSON configuration file.
+    
+    The JSON file should contain municipality configuration with:
+    - name: Full municipality name
+    - multipliers: Tax multiplier definitions
+    - multiplier_order: Order of multiplier display
+    
+    Example municipality structure:
+    {
+        "name": "Basel",
+        "multipliers": {
+            "canton": {"name": "Kanton", "code": "KANTON", "rate": 1.0, "default_selected": true},
+            "municipal": {"name": "Gemeinde", "code": "GEMEINDE", "rate": 1.2, "default_selected": true}
+        },
+        "multiplier_order": ["Kanton", "Gemeinde"]
+    }
+    """
+    try:
+        import json as json_mod
+        
+        # Load municipality data from file
+        muni_path = Path(municipality_file)
+        if not muni_path.exists():
+            raise FileNotFoundError(f"Municipality file not found: {municipality_file}")
+        
+        with open(muni_path, 'r') as f:
+            muni_data = json_mod.load(f)
+        
+        if not isinstance(muni_data, dict):
+            raise ValueError("Municipality file must contain a JSON object with municipality configuration")
+        
+        config_manager = ConfigManager(CONFIG_ROOT)
+        result = config_manager.create_municipality(year, canton_key, municipality_key, muni_data)
+        
+        if json_out:
+            response = _create_json_response(result)
+            print(json.dumps(response, indent=2))
+        else:
+            console, Panel, Text, _ = _create_console_with_imports()
+            
+            result_text = Text()
+            result_text.append("🏙️ MUNICIPALITY CREATED\n\n", style="bold green")
+            result_text.append(f"Year: {year}\n", style="cyan")
+            result_text.append(f"Canton: {result['canton_key']}\n", style="yellow")
+            result_text.append(f"Municipality Key: {result['municipality_key']}\n", style="yellow")
+            result_text.append(f"Municipality Name: {result['municipality_name']}\n", style="green")
+            result_text.append(f"Status: {result['message']}", style="green")
+            
+            if result.get('backup_file'):
+                result_text.append(f"\n\nBackup created: {result['backup_file']}", style="dim")
+            
+            console.print(Panel(result_text, title="Create Municipality", border_style="green"))
+            
+    except Exception as e:
+        _handle_json_error(e, json_out)
+
+
+@app.command()
+def update_municipality(
+    year: int = typer.Option(..., help="Tax year to update municipality in"),
+    canton_key: str = typer.Option(..., help="Canton key containing the municipality"),
+    municipality_key: str = typer.Option(..., help="Municipality key to update"),
+    municipality_file: str = typer.Option(..., help="JSON file containing updated municipality configuration"),
+    json_out: bool = typer.Option(False, "--json", help="Output JSON format"),
+):
+    """Update existing municipality from JSON configuration file.
+    
+    Updates all municipality properties including multipliers.
+    See create_municipality for JSON file format.
+    """
+    try:
+        import json as json_mod
+        
+        # Load municipality data from file
+        muni_path = Path(municipality_file)
+        if not muni_path.exists():
+            raise FileNotFoundError(f"Municipality file not found: {municipality_file}")
+        
+        with open(muni_path, 'r') as f:
+            muni_data = json_mod.load(f)
+        
+        if not isinstance(muni_data, dict):
+            raise ValueError("Municipality file must contain a JSON object with municipality configuration")
+        
+        config_manager = ConfigManager(CONFIG_ROOT)
+        result = config_manager.update_municipality(year, canton_key, municipality_key, muni_data)
+        
+        if json_out:
+            response = _create_json_response(result)
+            print(json.dumps(response, indent=2))
+        else:
+            console, Panel, Text, _ = _create_console_with_imports()
+            
+            result_text = Text()
+            result_text.append("🏙️ MUNICIPALITY UPDATED\n\n", style="bold green")
+            result_text.append(f"Year: {year}\n", style="cyan")
+            result_text.append(f"Canton: {result['canton_key']}\n", style="yellow")
+            result_text.append(f"Municipality Key: {result['municipality_key']}\n", style="yellow")
+            result_text.append(f"Municipality Name: {result['municipality_name']}\n", style="green")
+            result_text.append(f"Status: {result['message']}", style="green")
+            
+            if result.get('backup_file'):
+                result_text.append(f"\n\nBackup created: {result['backup_file']}", style="dim")
+            
+            console.print(Panel(result_text, title="Update Municipality", border_style="green"))
+            
+    except Exception as e:
+        _handle_json_error(e, json_out)

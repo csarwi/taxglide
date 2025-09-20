@@ -2,7 +2,6 @@
 """
 Convenient test runner for TaxGlide:
 - Runs pytest (category shortcuts supported)
-- If tests pass: ALWAYS build sdist+wheel and reinstall the package from the fresh wheel
 
 Examples:
   python run_tests.py
@@ -12,29 +11,10 @@ Examples:
 
 import sys
 import subprocess
-from pathlib import Path
-import shutil
-
-PROJECT_ROOT = Path(__file__).resolve().parent
-PACKAGE_NAME = "taxglide"  # pip distribution name
 
 def _run(cmd: list[str]) -> int:
     print(f"Running: {' '.join(cmd)}")
     return subprocess.run(cmd).returncode
-
-def _check_call(cmd: list[str]) -> None:
-    print(f"Running: {' '.join(cmd)}")
-    subprocess.check_call(cmd)
-
-def _clean_dist(dist: Path) -> None:
-    if dist.exists():
-        for p in dist.glob("*"):
-            try:
-                p.unlink()
-            except IsADirectoryError:
-                shutil.rmtree(p)
-    else:
-        dist.mkdir(parents=True, exist_ok=True)
 
 def run_tests() -> int:
     args = sys.argv[1:]
@@ -84,18 +64,6 @@ def run_tests() -> int:
         print("❌ tests failed")
         return code
     print("✅ tests passed")
-    
-    # Build & reinstall as promised in docstring
-    dist = PROJECT_ROOT / "dist"
-    _clean_dist(dist)
-    _check_call([sys.executable, "-m", "pip", "install", "--upgrade", "build"])
-    _check_call([sys.executable, "-m", "build", "--sdist", "--wheel"])
-    wheels = sorted(dist.glob("*.whl"))
-    if not wheels:
-        print("❌ no wheel built")
-        return 1
-    _check_call([sys.executable, "-m", "pip", "install", "--force-reinstall", str(wheels[-1])])
-    print("📦 reinstalled from fresh wheel")
     return 0
 
 if __name__ == "__main__":

@@ -159,9 +159,13 @@ impl CliIntegration {
             let python_exe = Self::find_venv_python(&self.cli_path)
                 .unwrap_or_else(|| PathBuf::from("python"));
             
+            let project_root = self.cli_path.parent().unwrap_or(&self.cli_path);
+            info!("Using Python: {:?}, Project root: {:?}", python_exe, project_root);
+            
             let mut cmd = Command::new(python_exe);
             cmd.arg(&self.cli_path);
             cmd.args(args);
+            cmd.current_dir(project_root); // Set working directory to project root
             cmd
         } else {
             // Executable
@@ -236,8 +240,11 @@ impl CliIntegration {
                 stderr_lines.join("\n")
             };
             
-            error!("CLI command failed: {}", error_msg);
-            return Err(CliError::ProcessFailed(error_msg));
+            error!("CLI command failed: {:?} - {}", args, error_msg);
+            error!("Exit code: {:?}", status.code());
+            error!("Stdout: {:?}", stdout_lines);
+            error!("Stderr: {:?}", stderr_lines);
+            return Err(CliError::ProcessFailed(format!("{} (exit code: {})", error_msg, status.code().unwrap_or(-1))));
         }
         
         if stdout_text.trim().is_empty() {
@@ -579,5 +586,357 @@ impl CliIntegration {
     /// Get version information (cached after first compatibility check)
     pub fn get_version_info(&self) -> Option<&VersionInfo> {
         self.version_info.as_ref()
+    }
+    
+    // Config management methods
+    
+    pub async fn list_years(&self) -> Result<AvailableYears, CliError> {
+        let args = ["list-years", "--json"];
+        
+        let response: CliResponse<AvailableYears> = self
+            .execute_command(&args, Duration::from_secs(10))
+            .await?;
+        
+        match response.payload {
+            CliPayload::Success { data } => Ok(data),
+            CliPayload::Error { error } => Err(CliError::CliError {
+                code: error.code,
+                message: error.message,
+            }),
+        }
+    }
+    
+    pub async fn get_config_summary(&self, params: ConfigSummaryParams) -> Result<ConfigSummary, CliError> {
+        let args = ["config-summary", "--json", "--year", &params.year.to_string()];
+        
+        let response: CliResponse<ConfigSummary> = self
+            .execute_command(&args, Duration::from_secs(10))
+            .await?;
+        
+        match response.payload {
+            CliPayload::Success { data } => Ok(data),
+            CliPayload::Error { error } => Err(CliError::CliError {
+                code: error.code,
+                message: error.message,
+            }),
+        }
+    }
+    
+    pub async fn create_year(&self, params: CreateYearParams) -> Result<YearOperationResult, CliError> {
+        let mut args = vec![
+            "create-year".to_string(),
+            "--json".to_string(),
+            "--source-year".to_string(),
+            params.source_year.to_string(),
+            "--target-year".to_string(),
+            params.target_year.to_string(),
+        ];
+        
+        if params.overwrite == Some(true) {
+            args.push("--overwrite".to_string());
+        }
+        
+        let args_str: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
+        
+        let response: CliResponse<YearOperationResult> = self
+            .execute_command(&args_str, Duration::from_secs(30))
+            .await?;
+        
+        match response.payload {
+            CliPayload::Success { data } => Ok(data),
+            CliPayload::Error { error } => Err(CliError::CliError {
+                code: error.code,
+                message: error.message,
+            }),
+        }
+    }
+    
+    pub async fn update_federal_brackets(&self, params: UpdateFederalBracketsParams) -> Result<FederalBracketsOperationResult, CliError> {
+        // Create temporary JSON file for segments data
+        let temp_file = std::env::temp_dir().join(format!("segments_{}.json", std::process::id()));
+        
+        // Convert segments to CLI-compatible format
+        // The CLI expects "from" field, but our struct uses "from_" with serde rename
+        // To avoid serialization issues, we'll create the JSON manually with correct field names
+        let segments_for_cli: Vec<serde_json::Value> = params.segments.iter().map(|seg| {
+            serde_json::json!({
+                "from": seg.from_,
+                "to": seg.to,
+                "at_income": seg.at_income,
+                "base_tax_at": seg.base_tax_at,
+                "per100": seg.per100
+            })
+        }).collect();
+        
+        let segments_json = serde_json::to_string_pretty(&segments_for_cli)?;
+        
+        // Debug: log the temp file path and contents for troubleshooting
+        debug!("Created segments file: {}", temp_file.display());
+        debug!("Segments JSON content: {}", segments_json);
+        
+        std::fs::write(&temp_file, segments_json)
+            .map_err(|e| CliError::IoError(e))?;
+        
+        let args = vec![
+            "update-federal-brackets".to_string(),
+            "--json".to_string(),
+            "--year".to_string(),
+            params.year.to_string(),
+            "--filing-status".to_string(),
+            params.filing_status,
+            "--segments-file".to_string(),
+            temp_file.to_string_lossy().to_string(),
+        ];
+        
+        let args_str: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
+        
+        let response: CliResponse<FederalBracketsOperationResult> = self
+            .execute_command(&args_str, Duration::from_secs(30))
+            .await.map_err(|e| {
+                // Keep temp file for debugging if command fails
+                error!("CLI command failed, temp file preserved at: {}", temp_file.display());
+                e
+            })?;
+        
+        // Clean up temp file only on success
+        let _ = std::fs::remove_file(&temp_file);
+        
+        match response.payload {
+            CliPayload::Success { data } => Ok(data),
+            CliPayload::Error { error } => Err(CliError::CliError {
+                code: error.code,
+                message: error.message,
+            }),
+        }
+    }
+    
+    pub async fn create_canton(&self, params: CreateCantonParams) -> Result<CantonOperationResult, CliError> {
+        // Create temporary JSON file for canton data
+        let temp_file = std::env::temp_dir().join(format!("canton_{}.json", std::process::id()));
+        let canton_json = serde_json::to_string_pretty(&params.canton_config)?;
+        
+        std::fs::write(&temp_file, canton_json)
+            .map_err(|e| CliError::IoError(e))?;
+        
+        let args = vec![
+            "create-canton".to_string(),
+            "--json".to_string(),
+            "--year".to_string(),
+            params.year.to_string(),
+            "--canton-key".to_string(),
+            params.canton_key,
+            "--canton-file".to_string(),
+            temp_file.to_string_lossy().to_string(),
+        ];
+        
+        let args_str: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
+        
+        let response: CliResponse<CantonOperationResult> = self
+            .execute_command(&args_str, Duration::from_secs(30))
+            .await?;
+        
+        // Clean up temp file
+        let _ = std::fs::remove_file(&temp_file);
+        
+        match response.payload {
+            CliPayload::Success { data } => Ok(data),
+            CliPayload::Error { error } => Err(CliError::CliError {
+                code: error.code,
+                message: error.message,
+            }),
+        }
+    }
+    
+    pub async fn update_canton(&self, params: UpdateCantonParams) -> Result<CantonOperationResult, CliError> {
+        // Create temporary JSON file for canton data
+        let temp_file = std::env::temp_dir().join(format!("canton_update_{}.json", std::process::id()));
+        let canton_json = serde_json::to_string_pretty(&params.canton_config)?;
+        
+        std::fs::write(&temp_file, canton_json)
+            .map_err(|e| CliError::IoError(e))?;
+        
+        let args = vec![
+            "update-canton".to_string(),
+            "--json".to_string(),
+            "--year".to_string(),
+            params.year.to_string(),
+            "--canton-key".to_string(),
+            params.canton_key,
+            "--canton-file".to_string(),
+            temp_file.to_string_lossy().to_string(),
+        ];
+        
+        let args_str: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
+        
+        let response: CliResponse<CantonOperationResult> = self
+            .execute_command(&args_str, Duration::from_secs(30))
+            .await?;
+        
+        // Clean up temp file
+        let _ = std::fs::remove_file(&temp_file);
+        
+        match response.payload {
+            CliPayload::Success { data } => Ok(data),
+            CliPayload::Error { error } => Err(CliError::CliError {
+                code: error.code,
+                message: error.message,
+            }),
+        }
+    }
+    
+    pub async fn delete_canton(&self, params: DeleteCantonParams) -> Result<CantonOperationResult, CliError> {
+        let mut args = vec![
+            "delete-canton".to_string(),
+            "--json".to_string(),
+            "--year".to_string(),
+            params.year.to_string(),
+            "--canton-key".to_string(),
+            params.canton_key,
+        ];
+        
+        if params.confirm == Some(true) {
+            args.push("--confirm".to_string());
+        }
+        
+        let args_str: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
+        
+        let response: CliResponse<CantonOperationResult> = self
+            .execute_command(&args_str, Duration::from_secs(30))
+            .await?;
+        
+        match response.payload {
+            CliPayload::Success { data } => Ok(data),
+            CliPayload::Error { error } => Err(CliError::CliError {
+                code: error.code,
+                message: error.message,
+            }),
+        }
+    }
+    
+    pub async fn create_municipality(&self, params: CreateMunicipalityParams) -> Result<MunicipalityOperationResult, CliError> {
+        // Create temporary JSON file for municipality data
+        let temp_file = std::env::temp_dir().join(format!("municipality_{}.json", std::process::id()));
+        let muni_json = serde_json::to_string_pretty(&params.municipality_config)?;
+        
+        info!("Creating municipality with data: {}", muni_json);
+        info!("Temporary file: {:?}", temp_file);
+        
+        std::fs::write(&temp_file, muni_json)
+            .map_err(|e| CliError::IoError(e))?;
+        
+        let args = vec![
+            "create-municipality".to_string(),
+            "--json".to_string(),
+            "--year".to_string(),
+            params.year.to_string(),
+            "--canton-key".to_string(),
+            params.canton_key,
+            "--municipality-key".to_string(),
+            params.municipality_key,
+            "--municipality-file".to_string(),
+            temp_file.to_string_lossy().to_string(),
+        ];
+        
+        let args_str: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
+        
+        let response: CliResponse<MunicipalityOperationResult> = self
+            .execute_command(&args_str, Duration::from_secs(30))
+            .await?;
+        
+        // Clean up temp file
+        let _ = std::fs::remove_file(&temp_file);
+        
+        match response.payload {
+            CliPayload::Success { data } => Ok(data),
+            CliPayload::Error { error } => Err(CliError::CliError {
+                code: error.code,
+                message: error.message,
+            }),
+        }
+    }
+    
+    pub async fn update_municipality(&self, params: UpdateMunicipalityParams) -> Result<MunicipalityOperationResult, CliError> {
+        // Create temporary JSON file for municipality data
+        let temp_file = std::env::temp_dir().join(format!("municipality_update_{}.json", std::process::id()));
+        let muni_json = serde_json::to_string_pretty(&params.municipality_config)?;
+        
+        std::fs::write(&temp_file, muni_json)
+            .map_err(|e| CliError::IoError(e))?;
+        
+        let args = vec![
+            "update-municipality".to_string(),
+            "--json".to_string(),
+            "--year".to_string(),
+            params.year.to_string(),
+            "--canton-key".to_string(),
+            params.canton_key,
+            "--municipality-key".to_string(),
+            params.municipality_key,
+            "--municipality-file".to_string(),
+            temp_file.to_string_lossy().to_string(),
+        ];
+        
+        let args_str: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
+        
+        let response: CliResponse<MunicipalityOperationResult> = self
+            .execute_command(&args_str, Duration::from_secs(30))
+            .await?;
+        
+        // Clean up temp file
+        let _ = std::fs::remove_file(&temp_file);
+        
+        match response.payload {
+            CliPayload::Success { data } => Ok(data),
+            CliPayload::Error { error } => Err(CliError::CliError {
+                code: error.code,
+                message: error.message,
+            }),
+        }
+    }
+    
+    pub async fn get_federal_segments(&self, params: GetFederalSegmentsParams) -> Result<FederalSegmentsResult, CliError> {
+        let args = [
+            "get-federal-segments",
+            "--json",
+            "--year",
+            &params.year.to_string(),
+            "--filing-status",
+            &params.filing_status,
+        ];
+        
+        let response: CliResponse<FederalSegmentsResult> = self
+            .execute_command(&args, Duration::from_secs(10))
+            .await?;
+        
+        match response.payload {
+            CliPayload::Success { data } => Ok(data),
+            CliPayload::Error { error } => Err(CliError::CliError {
+                code: error.code,
+                message: error.message,
+            }),
+        }
+    }
+    
+    pub async fn get_canton(&self, params: GetCantonParams) -> Result<CantonDetailsResult, CliError> {
+        let args = [
+            "get-canton",
+            "--json",
+            "--year",
+            &params.year.to_string(),
+            "--canton-key",
+            &params.canton_key,
+        ];
+        
+        let response: CliResponse<CantonDetailsResult> = self
+            .execute_command(&args, Duration::from_secs(10))
+            .await?;
+        
+        match response.payload {
+            CliPayload::Success { data } => Ok(data),
+            CliPayload::Error { error } => Err(CliError::CliError {
+                code: error.code,
+                message: error.message,
+            }),
+        }
     }
 }

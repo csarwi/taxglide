@@ -1,0 +1,142 @@
+# Multi-Canton Swiss Tax Configuration
+# This file defines tax rules for multiple cantons and their municipalities
+
+schema_version: "2.0"
+currency: CHF
+country: Switzerland
+
+# Federal tax configuration (same for all cantons, varies by filing status)
+federal:
+  single:
+    currency: CHF
+    rounding:
+      per_100_step: true
+      step_size: 100
+      step_mode: floor
+    segments:
+      - { from: 0,      to: 15200,  at_income: 15200,  base_tax_at: 0.00,     per100: 0.00 }
+      - { from: 15200,  to: 33200,  at_income: 15200,  base_tax_at: 0.00,     per100: 0.77 }
+      - { from: 33200,  to: 43500,  at_income: 33200,  base_tax_at: 138.60,   per100: 0.88 }
+      - { from: 43500,  to: 58000,  at_income: 43500,  base_tax_at: 229.20,   per100: 2.64 }
+      - { from: 58000,  to: 76100,  at_income: 58000,  base_tax_at: 612.00,   per100: 2.97 }
+      - { from: 76100,  to: 82000,  at_income: 76100,  base_tax_at: 1149.55,  per100: 5.94 }
+      - { from: 82000,  to: 108800, at_income: 82000,  base_tax_at: 1500.00,  per100: 6.60 }
+      - { from: 108800, to: 141500, at_income: 108800, base_tax_at: 3268.80,  per100: 8.80 }
+      - { from: 141500, to: 184900, at_income: 141500, base_tax_at: 6146.40,  per100: 11.00 }
+      - { from: 184900, to: 793300, at_income: 184900, base_tax_at: 10920.40, per100: 13.20 }
+      - { from: 793300, to: 793400, at_income: 793300, base_tax_at: 91229.20, per100: 0.00 }
+      - { from: 793400, to: null,   at_income: 793400, base_tax_at: 91241.00, per100: 11.50 }
+    notes: "Bundessteuer (Einzel). Marginal calc aligned to full hundreds."
+  
+  married_joint:
+    currency: CHF
+    rounding:
+      per_100_step: true
+      step_size: 100
+      step_mode: floor
+    segments:
+      - { from: 0,      to: 29700,  at_income: 0,      base_tax_at: 0.00,     per100: 0.00 }
+      - { from: 29700,  to: 53400,  at_income: 29700,  base_tax_at: 0.00,     per100: 1.00 }
+      - { from: 53400,  to: 61300,  at_income: 53400,  base_tax_at: 237.00,   per100: 2.00 }
+      - { from: 61300,  to: 79100,  at_income: 61300,  base_tax_at: 395.00,   per100: 3.00 }
+      - { from: 79100,  to: 94900,  at_income: 79100,  base_tax_at: 929.00,   per100: 4.00 }
+      - { from: 94900,  to: 108600, at_income: 94900,  base_tax_at: 1561.00,  per100: 5.00 }
+      - { from: 108600, to: 120500, at_income: 108600, base_tax_at: 2246.00,  per100: 6.00 }
+      - { from: 120500, to: 130500, at_income: 120500, base_tax_at: 2960.00,  per100: 7.00 }
+      - { from: 130500, to: 138300, at_income: 130500, base_tax_at: 3660.00,  per100: 8.00 }
+      - { from: 138300, to: 144200, at_income: 138300, base_tax_at: 4284.00,  per100: 9.00 }
+      - { from: 144200, to: 148200, at_income: 144200, base_tax_at: 4815.00,  per100: 10.00 }
+      - { from: 148200, to: 150300, at_income: 148200, base_tax_at: 5215.00,  per100: 11.00 }
+      - { from: 150300, to: 152300, at_income: 150300, base_tax_at: 5446.00,  per100: 12.00 }
+      - { from: 152300, to: 940800, at_income: 152300, base_tax_at: 5686.00,  per100: 13.00 }
+      - { from: 940800, to: 940900, at_income: 940800, base_tax_at: 108191.00, per100: 0.00 }
+      - { from: 940900, to: null,   at_income: 940900, base_tax_at: 108203.50, per100: 11.50 }
+    notes: "Bundessteuer (Verheiratete/Married). Marginal calc aligned to full hundreds."
+
+# Canton definitions
+cantons:
+  st_gallen:
+    name: "St. Gallen"
+    abbreviation: "SG"
+    model: percent_of_bracket_portion
+    rounding:
+      taxable_step: 1
+      tax_round_to: 0
+      scope: as_official
+    brackets:
+      - { lower: 0,      width: 11600,  rate_percent: 0.0 }
+      - { lower: 11600,  width: 4200,   rate_percent: 4.0 }
+      - { lower: 15800,  width: 18000,  rate_percent: 6.0 }
+      - { lower: 33800,  width: 26400,  rate_percent: 8.0 }
+      - { lower: 60200,  width: 38100,  rate_percent: 9.2 }
+      - { lower: 98300,  width: 165900, rate_percent: 9.4 }
+    override:
+      flat_percent_above:
+        threshold: 264200
+        percent: 8.5
+    notes: "Art. 50 h) einfache Steuer (SG)."
+    
+    # Municipalities within St. Gallen canton
+    municipalities:
+      st_gallen_city:
+        name: "St. Gallen"
+        multipliers:
+          canton: 
+            name: "Kanton"
+            code: "KANTON"
+            kind: "factor"
+            rate: 1.05
+            default_selected: true
+          municipal:
+            name: "Gemeinde"
+            code: "GEMEINDE"
+            kind: "factor"
+            rate: 1.38
+            default_selected: true
+          fire_service:
+            name: "Feuerwehr"
+            code: "FEUER"
+            kind: "factor"
+            rate: 0.14
+            default_selected: false
+          church:
+            name: "Church"
+            code: "CHURCH"
+            kind: "factor"
+            rate: 0.00
+            optional: true
+            default_selected: false
+        multiplier_order: ["Kanton", "Gemeinde", "Feuerwehr", "Church"]
+      Goldach:
+        name: "Goldach"
+        multipliers:
+          canton: 
+            name: "Kanton"
+            code: "KANTON"
+            kind: "factor"
+            rate: 1.05
+            default_selected: true
+          municipal:
+            name: "Gemeinde"
+            code: "GEMEINDE"
+            kind: "factor"
+            rate: 0.95 
+            default_selected: true
+          fire_service:
+            name: "Feuerwehr"
+            code: "FEUER"
+            kind: "factor"
+            rate: 0.0035
+            default_selected: false
+          church:
+            name: "Church"
+            code: "CHURCH"
+            kind: "factor"
+            rate: 0.00
+            optional: true
+            default_selected: false
+        multiplier_order: ["Kanton", "Gemeinde", "Feuerwehr", "Church"]
+# Default canton and municipality for backward compatibility
+defaults:
+  canton: st_gallen
+  municipality: st_gallen_city

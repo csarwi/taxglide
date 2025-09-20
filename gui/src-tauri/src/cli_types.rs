@@ -326,3 +326,244 @@ pub struct LocationDefaults {
     pub canton: String,
     pub municipality: String,
 }
+
+// Config management types
+
+/// List available years response
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct AvailableYears {
+    pub available_years: Vec<i32>,
+    pub count: usize,
+}
+
+/// Configuration summary response
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct ConfigSummary {
+    pub year: i32,
+    pub schema_version: String,
+    pub country: String,
+    pub currency: String,
+    pub canton_count: usize,
+    pub cantons: Vec<CantonSummary>,
+    pub defaults: LocationDefaults,
+    pub federal_filing_statuses: Vec<String>,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct CantonSummary {
+    pub key: String,
+    pub name: String,
+    pub abbreviation: String,
+    pub bracket_count: usize,
+    pub municipality_count: usize,
+    pub municipalities: Vec<MunicipalitySummary>,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct MunicipalitySummary {
+    pub key: String,
+    pub name: String,
+    pub multiplier_count: usize,
+}
+
+/// Create/update year result
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct YearOperationResult {
+    pub source_year: Option<i32>,
+    pub target_year: i32,
+    pub success: bool,
+    pub message: String,
+    pub archive_file: Option<String>,
+}
+
+/// Canton operation result
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct CantonOperationResult {
+    pub success: bool,
+    pub canton_key: String,
+    pub canton_name: String,
+    pub message: String,
+    pub archive_file: Option<String>,
+}
+
+/// Municipality operation result
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct MunicipalityOperationResult {
+    pub success: bool,
+    pub canton_key: String,
+    pub municipality_key: String,
+    pub municipality_name: String,
+    pub message: String,
+    pub archive_file: Option<String>,
+}
+
+/// Federal brackets operation result
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct FederalBracketsOperationResult {
+    pub success: bool,
+    pub filing_status: String,
+    pub segments_count: usize,
+    pub message: String,
+    pub archive_file: Option<String>,
+}
+
+// Configuration data structures for editing
+
+/// Tax bracket definition
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct TaxBracket {
+    pub lower: i32,
+    pub width: i32,
+    pub rate_percent: f64,
+}
+
+/// Rounding configuration
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct RoundingConfig {
+    pub taxable_step: i32,
+    pub tax_round_to: i32,
+    pub scope: String,
+}
+
+/// Tax multiplier definition
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct TaxMultiplier {
+    pub name: String,
+    pub code: String,
+    pub kind: String,
+    pub rate: f64,
+    pub optional: Option<bool>,
+    pub default_selected: bool,
+}
+
+/// Full canton configuration
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct CantonConfig {
+    pub name: String,
+    pub abbreviation: String,
+    pub model: Option<String>,
+    pub rounding: RoundingConfig,
+    pub brackets: Vec<TaxBracket>,
+    pub override_config: Option<serde_json::Value>,
+    pub notes: Option<String>,
+    pub municipalities: std::collections::HashMap<String, MunicipalityConfig>,
+}
+
+/// Full municipality configuration
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct MunicipalityConfig {
+    pub name: String,
+    pub multipliers: std::collections::HashMap<String, TaxMultiplier>,
+    pub multiplier_order: Vec<String>,
+}
+
+/// Federal tax segment
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct FederalTaxSegment {
+    #[serde(rename = "from")]
+    pub from_: i32,
+    pub to: Option<i32>,
+    pub at_income: i32,
+    pub base_tax_at: f64,
+    pub per100: f64,
+}
+
+// Config management command parameters
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct ListYearsParams {
+    // No parameters needed
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct ConfigSummaryParams {
+    pub year: i32,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct CreateYearParams {
+    pub source_year: i32,
+    pub target_year: i32,
+    pub overwrite: Option<bool>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct CreateCantonParams {
+    pub year: i32,
+    pub canton_key: String,
+    pub canton_config: CantonConfig,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct UpdateCantonParams {
+    pub year: i32,
+    pub canton_key: String,
+    pub canton_config: CantonConfig,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct DeleteCantonParams {
+    pub year: i32,
+    pub canton_key: String,
+    pub confirm: Option<bool>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct CreateMunicipalityParams {
+    pub year: i32,
+    pub canton_key: String,
+    pub municipality_key: String,
+    pub municipality_config: MunicipalityConfig,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct UpdateMunicipalityParams {
+    pub year: i32,
+    pub canton_key: String,
+    pub municipality_key: String,
+    pub municipality_config: MunicipalityConfig,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct DeleteMunicipalityParams {
+    pub year: i32,
+    pub canton_key: String,
+    pub municipality_key: String,
+    pub confirm: Option<bool>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct UpdateFederalBracketsParams {
+    pub year: i32,
+    pub filing_status: String,
+    pub segments: Vec<FederalTaxSegment>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct GetFederalSegmentsParams {
+    pub year: i32,
+    pub filing_status: String,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct FederalSegmentsResult {
+    pub year: i32,
+    pub filing_status: String,
+    pub segments: Vec<FederalTaxSegment>,
+    pub segments_count: usize,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct GetCantonParams {
+    pub year: i32,
+    pub canton_key: String,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct CantonDetailsResult {
+    pub name: String,
+    pub abbreviation: String,
+    pub brackets: Vec<TaxBracket>,
+    pub rounding: RoundingConfig,
+    pub municipalities: std::collections::HashMap<String, MunicipalityConfig>,
+}

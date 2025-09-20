@@ -34,6 +34,18 @@ pub fn run() {
             tauri_commands::is_cli_ready,
             tauri_commands::get_cli_status,
             tauri_commands::get_available_locations,
+            // Config management commands
+            tauri_commands::list_years,
+            tauri_commands::get_config_summary,
+            tauri_commands::create_year,
+            tauri_commands::update_federal_brackets,
+            tauri_commands::create_canton,
+            tauri_commands::update_canton,
+            tauri_commands::delete_canton,
+            tauri_commands::create_municipality,
+            tauri_commands::update_municipality,
+            tauri_commands::get_federal_segments,
+            tauri_commands::cli_get_canton,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

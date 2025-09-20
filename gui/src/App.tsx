@@ -6,6 +6,7 @@ import ErrorBoundary from './components/ErrorBoundary';
 import Calculator from './views/Calculator';
 import Optimizer from './views/Optimizer';
 import Scanner from './views/Scanner';
+import Settings from './views/Settings';
 import Debug from './views/Debug';
 import Info from './views/Info';
 
@@ -20,6 +21,7 @@ function App() {
                 <Route index element={<Calculator />} />
                 <Route path="optimizer" element={<Optimizer />} />
                 <Route path="scanner" element={<Scanner />} />
+                <Route path="settings" element={<Settings />} />
                 <Route path="info" element={<Info />} />
                 <Route path="debug" element={<Debug />} />
               </Route>
