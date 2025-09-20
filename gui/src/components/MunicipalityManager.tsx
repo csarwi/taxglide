@@ -118,15 +118,20 @@ const MunicipalityManager: React.FC = () => {
       
       if (municipality) {
         // Ensure all multipliers have the optional field properly set
-        const sanitizedMunicipality = {
-          ...municipality,
+        const sanitizedMunicipality: MunicipalityConfig = {
+          name: municipality.name,
+          multiplier_order: municipality.multiplier_order || [],
           multipliers: Object.fromEntries(
-            Object.entries(municipality.multipliers).map(([key, multiplier]) => [
+            Object.entries(municipality.multipliers || {}).map(([key, multiplier]) => [
               key,
               {
-                ...multiplier,
-                optional: multiplier.optional ?? false
-              }
+                name: (multiplier as any).name || '',
+                code: (multiplier as any).code || '',
+                kind: (multiplier as any).kind || 'factor',
+                rate: (multiplier as any).rate || 0,
+                optional: (multiplier as any).optional ?? false,
+                default_selected: (multiplier as any).default_selected ?? false
+              } as TaxMultiplier
             ])
           )
         };

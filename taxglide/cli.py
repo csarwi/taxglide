@@ -31,7 +31,7 @@ CONFIG_ROOT = Path(__file__).parent / "configs"
 VALID_FILING_STATUSES = {"single", "married_joint"}
 
 SCHEMA_VERSION = "1.0"
-TAXGLIDE_VERSION = "0.4.1"  # Should match pyproject.toml
+TAXGLIDE_VERSION = "0.5.0"  # Should match pyproject.toml
 
 # Error codes for JSON responses
 ERROR_CODES = {
